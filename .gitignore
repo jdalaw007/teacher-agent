@@ -1,0 +1,21 @@
+# Dependencies
+backend/venv/
+frontend/node_modules/
+
+# Environment files with secrets
+backend/.env
+frontend/.env.local
+
+# Data files
+backend/data/
+
+# Python
+__pycache__/
+*.pyc
+
+# Next.js
+frontend/.next/
+
+# OS
+.DS_Store
+Thumbs.db
