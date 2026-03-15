@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
 import json
 import hashlib
 from pathlib import Path
+from app.services.token_store import get_user_id_from_token
 
 router = APIRouter()
 
@@ -14,7 +15,7 @@ def get_user_id(request: Request) -> str:
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         token = auth[7:]
-        return hashlib.md5(token.encode()).hexdigest()[:16]
+        return get_user_id_from_token(token)
     return "anonymous"
 
 
@@ -41,9 +42,19 @@ def save_index(user_id: str, class_id: str, index: dict):
 @router.get("/documents")
 async def list_documents(request: Request, class_id: str):
     user_id = get_user_id(request)
-    index = get_index(user_id, class_id)
-    docs = [{"id": doc_id, **info} for doc_id, info in index["documents"].items()]
-    return {"documents": docs, "class_id": class_id}
+    from app.services.linked_classes import LinkedClassService
+    linked_service = LinkedClassService(user_id)
+    linked_ids = linked_service.get_linked_class_ids(class_id)
+
+    all_docs = []
+    for cid in linked_ids:
+        index = get_index(user_id, cid)
+        for doc_id, info in index["documents"].items():
+            doc = {"id": doc_id, **info, "source_class_id": cid}
+            if cid != class_id:
+                doc["shared"] = True
+            all_docs.append(doc)
+    return {"documents": all_docs, "class_id": class_id}
 
 
 @router.post("/upload")
@@ -66,8 +77,18 @@ async def upload_document(
             from pypdf import PdfReader
             import io
             pdf = PdfReader(io.BytesIO(content))
+            if pdf.is_encrypted:
+                # Try decrypting with empty password (owner-locked but readable)
+                result = pdf.decrypt("")
+                if result == 0:
+                    raise HTTPException(400, "This PDF is password-protected. Remove the password before uploading.")
             text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+        except HTTPException:
+            raise
         except Exception as e:
+            err = str(e)
+            if "cryptography" in err.lower() or "AES" in err:
+                raise HTTPException(400, "This PDF uses encryption that requires the 'cryptography' package. Please restart the backend and try again, or convert the PDF to an unencrypted version.")
             raise HTTPException(400, f"Failed to parse PDF: {e}")
     elif filename.lower().endswith('.docx'):
         try:
@@ -166,20 +187,28 @@ async def get_document_content(doc_id: str, request: Request, class_id: str):
 @router.get("/search")
 async def search_corpus(request: Request, class_id: str, query: str, limit: int = 5):
     user_id = get_user_id(request)
-    class_dir = get_class_dir(user_id, class_id)
-    index = get_index(user_id, class_id)
+    from app.services.linked_classes import LinkedClassService
+    linked_service = LinkedClassService(user_id)
+    linked_ids = linked_service.get_linked_class_ids(class_id)
 
     results = []
     query_lower = query.lower()
 
-    for doc_id in index["documents"]:
-        doc_file = class_dir / f"{doc_id}.txt"
-        if doc_file.exists():
-            text = doc_file.read_text(encoding='utf-8')
-            if query_lower in text.lower():
-                idx = text.lower().find(query_lower)
-                snippet = text[max(0, idx-100):idx+300]
-                results.append({"content": snippet, "metadata": index["documents"][doc_id]})
+    for cid in linked_ids:
+        cdir = get_class_dir(user_id, cid)
+        idx_data = get_index(user_id, cid)
+        for doc_id in idx_data["documents"]:
+            doc_file = cdir / f"{doc_id}.txt"
+            if doc_file.exists():
+                text = doc_file.read_text(encoding='utf-8')
+                if query_lower in text.lower():
+                    pos = text.lower().find(query_lower)
+                    snippet = text[max(0, pos-100):pos+300]
+                    results.append({
+                        "content": snippet,
+                        "metadata": idx_data["documents"][doc_id],
+                        "source_class_id": cid,
+                    })
 
     return {"results": results[:limit], "class_id": class_id}
 
@@ -277,3 +306,61 @@ async def import_from_drive(
         raise
     except Exception as e:
         raise HTTPException(400, f"Failed to import: {e}")
+
+
+@router.post("/import-from-url")
+async def import_from_url(
+    request: Request,
+    url: str = Form(...),
+    class_id: str = Form(...),
+    title: str = Form(None)
+):
+    """Fetch a public URL (HTML page or PDF) and import its text into the corpus."""
+    import httpx
+    import re
+    user_id = get_user_id(request)
+    class_dir = get_class_dir(user_id, class_id)
+
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
+            resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+        resp.raise_for_status()
+    except Exception as e:
+        raise HTTPException(400, f"Could not fetch URL: {e}")
+
+    content_type = resp.headers.get("content-type", "")
+
+    if "application/pdf" in content_type:
+        try:
+            from pypdf import PdfReader
+            import io
+            pdf = PdfReader(io.BytesIO(resp.content))
+            text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+        except Exception as e:
+            raise HTTPException(400, f"Failed to parse PDF: {e}")
+    elif "text/html" in content_type or "text/plain" in content_type:
+        if "text/html" in content_type:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n")
+            text = re.sub(r"\n{3,}", "\n\n", text).strip()
+        else:
+            text = resp.text
+    else:
+        raise HTTPException(400, f"Unsupported content type: {content_type}")
+
+    if not text.strip():
+        raise HTTPException(400, "No text content found at that URL")
+
+    from urllib.parse import urlparse
+    doc_title = title or urlparse(url).netloc + urlparse(url).path
+    doc_id = hashlib.md5(url.encode()).hexdigest()[:12]
+
+    (class_dir / f"{doc_id}.txt").write_text(text, encoding="utf-8")
+    index = get_index(user_id, class_id)
+    index["documents"][doc_id] = {"title": doc_title, "source": "url", "url": url}
+    save_index(user_id, class_id, index)
+
+    return {"message": "Imported from URL", "doc_id": doc_id, "title": doc_title, "class_id": class_id}

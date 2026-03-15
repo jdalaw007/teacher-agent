@@ -1,133 +1,650 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import Navbar from '@/components/Navbar'
-import ClassList from '@/components/ClassList'
+import Sidebar from '@/components/Sidebar'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
+interface Message {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+interface ToolStatus {
+  name: string
+  status: 'calling' | 'done'
+}
+
+interface EmailMessage {
+  id: string
+  from: string
+  subject: string
+  date: string
+  snippet: string
+  unread: boolean
+}
+
+interface Submission {
+  student_name: string
+  assignment_title: string
+  class_id: string
+  state: string
+  submitted_at: string | null
+}
 
 interface Course {
   id: string
   name: string
-  section?: string
-  description?: string
+}
+
+const TOOL_LABELS: Record<string, string> = {
+  search_corpus: 'Searching documents...',
+  get_student_data: 'Looking up student data...',
+  get_class_assignments: 'Fetching assignments...',
+  get_class_roster: 'Loading class roster...',
+  post_assignment: 'Posting assignment...',
+  post_announcement: 'Posting announcement...',
+  search_memories: 'Searching past conversations...',
+  log_strategy: 'Logging strategy...',
+}
+
+const FALLBACK_PROMPTS = [
+  'How are my students doing on recent assignments?',
+  'Draft a lesson plan for this week',
+  'Create a formative assessment quiz',
+  'What differentiation strategies should I try?',
+]
+
+function formatEmailDate(dateStr: string): string {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return ''
+  const now = new Date()
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000)
+  if (diffDays === 0) return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  if (diffDays < 7) return d.toLocaleDateString(undefined, { weekday: 'short' })
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
 export default function Dashboard() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const [courses, setCourses] = useState<Course[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [user, setUser] = useState<{ name: string; email: string } | null>(null)
 
+  const [user, setUser] = useState<{ name: string; email: string } | null>(null)
+  const [token, setToken] = useState<string | null>(null)
+
+  // Chat state
+  const [messages, setMessages] = useState<Message[]>([])
+  const [streamingContent, setStreamingContent] = useState('')
+  const [toolStatuses, setToolStatuses] = useState<ToolStatus[]>([])
+  const [inputValue, setInputValue] = useState('')
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [activeConvId, setActiveConvId] = useState<string | null>(null)
+
+  // Greeting state
+  const [greetingText, setGreetingText] = useState('')
+  const [suggestedPrompts, setSuggestedPrompts] = useState<string[]>(FALLBACK_PROMPTS)
+
+  // Live feed state
+  const [emails, setEmails] = useState<EmailMessage[] | null>(null)
+  const [emailsError, setEmailsError] = useState(false)
+  const [submissions, setSubmissions] = useState<Submission[]>([])
+  const [courses, setCourses] = useState<Course[]>([])
+
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, streamingContent])
+
+  // Init
   useEffect(() => {
     const tokenFromUrl = searchParams.get('token')
     if (tokenFromUrl) {
       localStorage.setItem('token', tokenFromUrl)
       router.replace('/dashboard')
-    }
-  }, [searchParams, router])
-
-  useEffect(() => {
-    const token = localStorage.getItem('token')
-    if (!token) {
-      router.push('/')
       return
     }
 
-    const fetchData = async () => {
-      try {
-        const [userRes, coursesRes] = await Promise.all([
-          fetch(`${API_URL}/auth/user`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`${API_URL}/classroom/courses`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-        ])
+    const t = localStorage.getItem('token')
+    if (!t) { router.push('/'); return }
+    setToken(t)
 
-        if (!userRes.ok || !coursesRes.ok) {
-          throw new Error('Failed to fetch data')
-        }
+    fetch(`${API_URL}/onboarding/profile`, { headers: { Authorization: `Bearer ${t}` } })
+      .then(r => r.json())
+      .then(d => { if (!d.onboarding_complete) router.push('/onboarding') })
+      .catch(() => {})
 
-        const userData = await userRes.json()
-        const coursesData = await coursesRes.json()
+    fetch(`${API_URL}/auth/user`, { headers: { Authorization: `Bearer ${t}` } })
+      .then(r => { if (!r.ok) throw new Error(); return r.json() })
+      .then(d => setUser(d))
+      .catch(() => { localStorage.removeItem('token'); router.push('/') })
 
-        setUser(userData)
-        setCourses(coursesData.courses || [])
-      } catch (err) {
-        setError('Failed to load data. Please try logging in again.')
-        localStorage.removeItem('token')
-      } finally {
-        setLoading(false)
+    fetch(`${API_URL}/classroom/courses`, { headers: { Authorization: `Bearer ${t}` } })
+      .then(r => r.json()).then(d => setCourses(d.courses || [])).catch(() => {})
+
+    fetch(`${API_URL}/dashboard/summary`, { headers: { Authorization: `Bearer ${t}` } })
+      .then(r => r.json()).then(d => setSubmissions(d.submissions || [])).catch(() => {})
+
+    fetch(`${API_URL}/gmail/messages?max_results=5`, { headers: { Authorization: `Bearer ${t}` } })
+      .then(r => { if (!r.ok) throw new Error(); return r.json() })
+      .then(d => setEmails(d.messages || []))
+      .catch(() => { setEmails([]); setEmailsError(true) })
+
+    fetch(`${API_URL}/scheduled-posts/check-due`, {
+      method: 'POST', headers: { Authorization: `Bearer ${t}` },
+    }).catch(() => {})
+
+    fetch(`${API_URL}/dashboard/suggested-prompts`, { headers: { Authorization: `Bearer ${t}` } })
+      .then(r => r.json())
+      .then(d => { if (d.prompts?.length) setSuggestedPrompts(d.prompts) })
+      .catch(() => {})
+  }, [router, searchParams])
+
+  // Set greeting instantly from user name
+  useEffect(() => {
+    if (!user) return
+    const first = user.name?.split(' ')[0] || ''
+    setGreetingText(`Hi ${first}, where should we start?`)
+  }, [user])
+
+  const sendMessage = async (text?: string) => {
+    const msg = (text || inputValue).trim()
+    if (!msg || !token || isStreaming) return
+
+    setInputValue('')
+    setMessages(prev => [...prev, { role: 'user', content: msg }])
+    setIsStreaming(true)
+    setStreamingContent('')
+    setToolStatuses([])
+
+    try {
+      let convId = activeConvId
+      if (!convId) {
+        const r = await fetch(`${API_URL}/chat/conversations`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: msg.slice(0, 60) }),
+        })
+        const d = await r.json()
+        convId = d.id
+        setActiveConvId(convId)
       }
+
+      const res = await fetch(`${API_URL}/chat/conversations/${convId}/messages`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg }),
+      })
+      if (!res.ok || !res.body) throw new Error('Stream failed')
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      let fullContent = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() || ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const d = JSON.parse(line.slice(6))
+            if (d.type === 'content') { fullContent += d.content; setStreamingContent(fullContent) }
+            else if (d.type === 'tool_call') setToolStatuses(p => [...p, { name: d.name, status: 'calling' }])
+            else if (d.type === 'tool_result') setToolStatuses(p => p.map(t => t.name === d.name ? { ...t, status: 'done' } : t))
+          } catch {}
+        }
+      }
+
+      if (fullContent) setMessages(prev => [...prev, { role: 'assistant', content: fullContent }])
+      setStreamingContent('')
+    } catch {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Something went wrong. Please try again.' }])
+      setStreamingContent('')
+    } finally {
+      setIsStreaming(false)
+      setToolStatuses([])
     }
-
-    fetchData()
-  }, [router])
-
-  if (loading) {
-    return (
-      <div style={styles.loading}>
-        <p>Loading...</p>
-      </div>
-    )
   }
 
-  if (error) {
-    return (
-      <div style={styles.error}>
-        <p>{error}</p>
-        <button onClick={() => router.push('/')} style={styles.button}>
-          Back to Login
-        </button>
-      </div>
-    )
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
   }
+
+  const submissionsByClass = submissions.reduce((acc, s) => {
+    const name = courses.find(c => c.id === s.class_id)?.name || 'Unknown Class'
+    acc[name] = (acc[name] || 0) + 1
+    return acc
+  }, {} as Record<string, number>)
+
+  const hasUserMessages = messages.some(m => m.role === 'user')
 
   return (
-    <div>
-      <Navbar userName={user?.name || ''} />
-      <main style={styles.main}>
-        <h1 style={styles.title}>Your Classes</h1>
-        <ClassList courses={courses} />
-      </main>
+    <div style={styles.app}>
+      <Sidebar />
+
+      <div style={styles.body}>
+        {/* Chat Panel */}
+        <div style={styles.chatPanel}>
+          <div style={styles.chatHeader}>
+            <span style={styles.chatTitle}>Teacher Agent</span>
+          </div>
+
+          <div style={styles.messagesArea}>
+            {/* Greeting view (before any user message) */}
+            {!hasUserMessages && (
+              <>
+                {greetingText && (
+                  <div style={styles.greetingText}>{greetingText}</div>
+                )}
+                <div style={styles.suggestedSection}>
+                  <div style={styles.suggestedLabel}>Suggested prompts</div>
+                  <div style={styles.suggestedBtns}>
+                    {suggestedPrompts.map((p, i) => (
+                      <button key={i} onClick={() => sendMessage(p)} style={styles.suggestedBtn}>
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Chat messages (after user sends first message) */}
+            {hasUserMessages && messages.map((msg, i) => (
+              <div key={i} style={msg.role === 'user' ? styles.userBubble : styles.aiBubble}>
+                {msg.role === 'user' ? msg.content : renderContent(msg.content)}
+              </div>
+            ))}
+
+            {/* Tool indicators */}
+            {toolStatuses.length > 0 && (
+              <div style={styles.toolArea}>
+                {toolStatuses.map((t, i) => (
+                  <div key={i} style={styles.toolItem}>
+                    <span style={{ color: '#1a73e8', fontSize: '0.75rem', minWidth: 14 }}>
+                      {t.status === 'calling' ? '...' : '✓'}
+                    </span>
+                    <span>{TOOL_LABELS[t.name] || t.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Streaming response */}
+            {streamingContent && hasUserMessages && (
+              <div style={styles.aiBubble}>
+                {renderContent(streamingContent)}
+                <span style={styles.cursor}>|</span>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          <div style={styles.inputRow}>
+            <textarea
+              ref={inputRef}
+              value={inputValue}
+              onChange={e => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Type a command or ask a question..."
+              disabled={isStreaming}
+              style={styles.textarea}
+              rows={1}
+            />
+            <button
+              onClick={() => sendMessage()}
+              disabled={!inputValue.trim() || isStreaming}
+              style={{ ...styles.sendBtn, opacity: !inputValue.trim() || isStreaming ? 0.4 : 1 }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Live Feed */}
+        <div style={styles.liveFeed}>
+          <div style={styles.liveFeedTitle}>Live Feed</div>
+
+          {/* Inbox */}
+          <div style={styles.card}>
+            <div style={styles.cardHead}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+                <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+              </svg>
+              <span style={styles.cardLabel}>INBOX</span>
+            </div>
+            {emails === null && !emailsError ? (
+              <p style={styles.cardHint}>Loading...</p>
+            ) : emailsError ? (
+              <div>
+                <p style={styles.cardHint}>Gmail not connected.</p>
+                <button
+                  style={styles.reloginBtn}
+                  onClick={() => { localStorage.removeItem('token'); window.location.href = `${API_URL}/auth/login` }}
+                >
+                  Sign in again to enable
+                </button>
+              </div>
+            ) : emails!.length === 0 ? (
+              <p style={styles.cardHint}>No recent emails</p>
+            ) : (
+              emails!.map(em => (
+                <div key={em.id} style={styles.feedRow}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{ ...styles.feedFrom, ...(em.unread ? { fontWeight: 700, color: '#111' } : {}) }}>
+                      {em.from.replace(/<.*>/, '').trim() || em.from}
+                    </span>
+                    <span style={styles.feedDate}>{formatEmailDate(em.date)}</span>
+                  </div>
+                  <div style={{ ...styles.feedSubject, ...(em.unread ? { fontWeight: 600, color: '#222' } : {}) }}>
+                    {em.subject}
+                  </div>
+                  {em.snippet && (
+                    <div style={styles.feedSnippet}>{em.snippet}</div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Calendar */}
+          <div style={styles.card}>
+            <div style={styles.cardHead}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                <line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+              </svg>
+              <span style={styles.cardLabel}>CALENDAR</span>
+            </div>
+            <p style={styles.cardHint}>Google Calendar — coming soon</p>
+          </div>
+
+          {/* Google Classroom */}
+          <div style={styles.card}>
+            <div style={styles.cardHead}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <rect x="2" y="3" width="20" height="18" rx="2" fill="#34a853" />
+                <rect x="6" y="8" width="12" height="1.5" rx="0.75" fill="white" />
+                <rect x="6" y="12" width="12" height="1.5" rx="0.75" fill="white" />
+                <rect x="6" y="16" width="7" height="1.5" rx="0.75" fill="white" />
+              </svg>
+              <span style={styles.cardLabel}>GOOGLE CLASSROOM</span>
+            </div>
+            {Object.keys(submissionsByClass).length === 0 ? (
+              <p style={styles.cardHint}>No new submissions</p>
+            ) : (
+              Object.entries(submissionsByClass).map(([name, count]) => (
+                <div key={name} style={styles.feedRow}>
+                  <span style={{ fontWeight: 600, color: '#333', fontSize: '0.85rem' }}>{name}: </span>
+                  <span style={{ color: '#555', fontSize: '0.85rem' }}>
+                    {count} new submission{count !== 1 ? 's' : ''}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
 
+function renderContent(text: string) {
+  const cleaned = text.replace(/\[ACTION:[^\]]+\]/g, '').trim()
+  const lines = cleaned.split('\n')
+  return lines.map((line, i) => {
+    let processed = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
+      const content = line.trim().slice(2).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      return <div key={i} style={{ paddingLeft: '1rem', marginBottom: '2px' }}><span dangerouslySetInnerHTML={{ __html: '&bull; ' + content }} /></div>
+    }
+    const numMatch = line.trim().match(/^(\d+)\.\s(.+)/)
+    if (numMatch) {
+      processed = numMatch[2].replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      return <div key={i} style={{ paddingLeft: '1rem', marginBottom: '2px' }}><span dangerouslySetInnerHTML={{ __html: numMatch[1] + '. ' + processed }} /></div>
+    }
+    if (line.trim().startsWith('## ')) return <div key={i} style={{ fontWeight: 'bold', fontSize: '1.05rem', marginTop: '8px', marginBottom: '4px' }}>{line.trim().slice(3)}</div>
+    if (line.trim().startsWith('# ')) return <div key={i} style={{ fontWeight: 'bold', fontSize: '1.1rem', marginTop: '8px', marginBottom: '4px' }}>{line.trim().slice(2)}</div>
+    if (!line.trim()) return <div key={i} style={{ height: '8px' }} />
+    return <div key={i} style={{ marginBottom: '2px' }}><span dangerouslySetInnerHTML={{ __html: processed }} /></div>
+  })
+}
+
 const styles: { [key: string]: React.CSSProperties } = {
-  main: {
-    padding: '2rem',
-    maxWidth: '1200px',
-    margin: '0 auto',
-  },
-  title: {
-    marginBottom: '1.5rem',
-    color: '#333',
-  },
-  loading: {
+  app: {
     display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    minHeight: '100vh',
+    height: '100vh',
+    overflow: 'hidden',
+    backgroundColor: '#f0f2f5',
   },
-  error: {
+  body: {
+    flex: 1,
+    display: 'flex',
+    overflow: 'hidden',
+    padding: '12px',
+    gap: '12px',
+  },
+  chatPanel: {
+    flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'center',
-    minHeight: '100vh',
-    gap: '1rem',
+    backgroundColor: '#fff',
+    borderRadius: '12px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+    overflow: 'hidden',
   },
-  button: {
+  chatHeader: {
+    padding: '16px 20px',
+    borderBottom: '1px solid #f0f0f0',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  chatTitle: {
+    fontSize: '1rem',
+    fontWeight: 600,
+    color: '#333',
+  },
+  messagesArea: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: '28px 28px 12px',
+  },
+  greetingText: {
+    fontSize: '1.65rem',
+    fontWeight: 600,
+    color: '#1a1a2e',
+    lineHeight: 1.35,
+    marginBottom: '32px',
+    whiteSpace: 'pre-wrap',
+  },
+  suggestedSection: {
+    marginTop: '4px',
+  },
+  suggestedLabel: {
+    fontSize: '0.82rem',
+    color: '#bbb',
+    marginBottom: '12px',
+    fontStyle: 'italic',
+  },
+  suggestedBtns: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: '8px',
+  },
+  suggestedBtn: {
+    padding: '10px 16px',
+    backgroundColor: '#f8f9fa',
+    border: '1px solid #e0e0e0',
+    borderRadius: '20px',
+    cursor: 'pointer',
+    fontSize: '0.85rem',
+    color: '#444',
+  },
+  userBubble: {
     backgroundColor: '#1a73e8',
-    color: 'white',
+    color: '#fff',
+    padding: '10px 14px',
+    borderRadius: '18px 18px 4px 18px',
+    fontSize: '0.92rem',
+    lineHeight: 1.5,
+    maxWidth: '80%',
+    marginBottom: '12px',
+    marginLeft: 'auto',
+    wordBreak: 'break-word' as const,
+  },
+  aiBubble: {
+    backgroundColor: '#f0f4ff',
+    padding: '12px 16px',
+    borderRadius: '18px 18px 18px 4px',
+    fontSize: '0.92rem',
+    lineHeight: 1.5,
+    color: '#222',
+    maxWidth: '85%',
+    marginBottom: '12px',
+    wordBreak: 'break-word' as const,
+  },
+  toolArea: {
+    padding: '2px 0 8px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  },
+  toolItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '0.8rem',
+    color: '#888',
+    fontStyle: 'italic',
+  },
+  cursor: {
+    animation: 'blink 1s infinite',
+    color: '#1a73e8',
+  },
+  inputRow: {
+    display: 'flex',
+    gap: '8px',
+    padding: '12px 16px',
+    borderTop: '1px solid #f0f0f0',
+    alignItems: 'flex-end',
+  },
+  textarea: {
+    flex: 1,
+    padding: '10px 14px',
+    border: '1px solid #e0e0e0',
+    borderRadius: '10px',
+    fontSize: '0.92rem',
+    fontFamily: 'inherit',
+    resize: 'none' as const,
+    outline: 'none',
+    minHeight: '42px',
+    maxHeight: '120px',
+    backgroundColor: '#f8f9fa',
+  },
+  sendBtn: {
+    width: '42px',
+    height: '42px',
+    backgroundColor: '#1a73e8',
+    color: '#fff',
     border: 'none',
-    padding: '10px 24px',
+    borderRadius: '10px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  liveFeed: {
+    width: '320px',
+    overflowY: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+    flexShrink: 0,
+  },
+  liveFeedTitle: {
+    fontSize: '1rem',
+    fontWeight: 600,
+    color: '#444',
+    padding: '4px 2px',
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: '12px',
+    padding: '14px 16px',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
+  },
+  cardHead: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginBottom: '10px',
+  },
+  cardLabel: {
+    fontSize: '0.7rem',
+    fontWeight: 700,
+    color: '#888',
+    letterSpacing: '0.06em',
+  },
+  cardHint: {
+    color: '#bbb',
+    fontSize: '0.85rem',
+    margin: 0,
+  },
+  feedRow: {
+    padding: '6px 0',
+    borderBottom: '1px solid #f5f5f5',
+  },
+  feedFrom: {
+    fontSize: '0.82rem',
+    color: '#555',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
+    flex: 1,
+  },
+  feedDate: {
+    fontSize: '0.75rem',
+    color: '#bbb',
+    whiteSpace: 'nowrap' as const,
+  },
+  feedSubject: {
+    fontSize: '0.82rem',
+    color: '#777',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
+    marginTop: '1px',
+  },
+  feedSnippet: {
+    fontSize: '0.78rem',
+    color: '#bbb',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
+    marginTop: '2px',
+  },
+  reloginBtn: {
+    marginTop: '6px',
+    padding: '5px 12px',
+    backgroundColor: '#1a73e8',
+    color: '#fff',
+    border: 'none',
     borderRadius: '6px',
     cursor: 'pointer',
+    fontSize: '0.8rem',
   },
 }

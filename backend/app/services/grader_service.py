@@ -1,0 +1,234 @@
+import json
+import difflib
+from openai import OpenAI
+from app.config import get_settings
+from app.services.classroom import ClassroomService
+from app.services.drive import DriveService
+from app.services.profile import ProfileService
+from app.services.database import get_db
+
+settings = get_settings()
+
+
+def _get_openai_client(user_id: str) -> OpenAI:
+    user_key = ProfileService(user_id).get_api_key()
+    api_key = user_key or settings.openai_api_key
+    return OpenAI(api_key=api_key)
+
+
+def _extract_text_from_submission(submission: dict, token: str) -> str:
+    """Extract text from a student submission."""
+    # Short answer question
+    short_answer = submission.get("shortAnswerSubmission", {})
+    if short_answer.get("answer"):
+        return short_answer["answer"]
+
+    # Drive attachments
+    attachments = submission.get("assignmentSubmission", {}).get("attachments", [])
+    if not attachments:
+        return ""
+
+    drive = DriveService(token)
+    texts = []
+    for attachment in attachments:
+        drive_file = attachment.get("driveFile", {})
+        file_id = drive_file.get("id")
+        if not file_id:
+            continue
+        try:
+            file_meta = drive.get_file(file_id)
+            mime = file_meta.get("mimeType", "")
+            if mime in ("application/vnd.google-apps.document", "application/vnd.google-apps.spreadsheet"):
+                text = drive.export_as_text(file_id, mime)
+                texts.append(text)
+            elif mime.startswith("text/"):
+                raw = drive.download_file(file_id)
+                texts.append(raw.decode("utf-8", errors="replace"))
+        except Exception:
+            pass
+
+    return "\n\n".join(texts)
+
+
+def _check_plagiarism(texts_by_student: dict) -> list:
+    """Pairwise similarity check. Returns flags for ratio > 0.6."""
+    flags = []
+    names = list(texts_by_student.keys())
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            a = texts_by_student[names[i]][:3000]
+            b = texts_by_student[names[j]][:3000]
+            if not a or not b:
+                continue
+            ratio = difflib.SequenceMatcher(None, a, b).ratio()
+            if ratio > 0.6:
+                flags.append({
+                    "student_a": names[i],
+                    "student_b": names[j],
+                    "similarity": round(ratio, 2),
+                })
+    return flags
+
+
+def _save_result(teacher_user_id: str, course_id: str, assignment_id: str, assignment_title: str,
+                 student_name: str, ai_score: int, ai_reasoning: str, grade: int, max_points: int,
+                 feedback: str, plagiarism_flagged: bool) -> None:
+    try:
+        db = get_db()
+        db.execute(
+            """INSERT INTO grader_results
+               (teacher_user_id, course_id, assignment_id, assignment_title, student_name,
+                ai_score, ai_reasoning, grade, max_points, feedback, plagiarism_flagged, graded_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+               ON CONFLICT(teacher_user_id, course_id, assignment_id, student_name)
+               DO UPDATE SET ai_score=excluded.ai_score, ai_reasoning=excluded.ai_reasoning,
+                   grade=excluded.grade, max_points=excluded.max_points, feedback=excluded.feedback,
+                   plagiarism_flagged=excluded.plagiarism_flagged, graded_at=excluded.graded_at""",
+            (teacher_user_id, course_id, assignment_id, assignment_title, student_name,
+             ai_score, ai_reasoning, grade, max_points, feedback, int(plagiarism_flagged))
+        )
+        db.commit()
+        db.close()
+    except Exception:
+        pass  # Don't let DB errors break the stream
+
+
+GRADE_PROMPT = """You are grading a student assignment. Do two things:
+1. AI-DETECTION: Rate 1-10 how likely this was written by AI (10=definitely AI).
+2. GRADING: Grade against this rubric and assign a score out of {max_points}:
+{rubric}
+
+Student submission:
+{text}
+
+Respond with JSON only: {{"ai_score": int, "ai_reasoning": str, "grade": int, "feedback": str}}"""
+
+
+async def grade_assignment_stream(token: str, user_id: str, course_id: str, assignment_id: str, rubric: str, max_points: int):
+    """Async generator yielding SSE events for the grading pipeline."""
+
+    def sse(data: dict) -> str:
+        return f"data: {json.dumps(data)}\n\n"
+
+    try:
+        client = _get_openai_client(user_id)
+
+        yield sse({"type": "status", "message": "Fetching submissions..."})
+
+        classroom = ClassroomService(token)
+
+        # Get assignment title for record-keeping
+        try:
+            assignment_data = classroom.get_assignment(course_id, assignment_id)
+            assignment_title = assignment_data.get("title", assignment_id)
+        except Exception:
+            assignment_title = assignment_id
+
+        submissions = classroom.list_submissions(course_id, assignment_id)
+
+        yield sse({"type": "status", "message": f"Found {len(submissions)} submission(s). Fetching roster..."})
+
+        # Build user_id -> name lookup
+        try:
+            classroom_students = classroom.list_students(course_id)
+            student_names = {
+                s["userId"]: s.get("profile", {}).get("name", {}).get("fullName", s["userId"])
+                for s in classroom_students
+            }
+        except Exception:
+            student_names = {}
+
+        yield sse({"type": "status", "message": "Extracting submission text..."})
+
+        # Extract text per student
+        texts_by_student: dict[str, str] = {}
+        sub_map: dict[str, str | None] = {}  # name -> text or None (no submission)
+
+        for sub in submissions:
+            uid = sub.get("userId", "")
+            name = student_names.get(uid, f"Student ({uid[-6:]})")
+            state = sub.get("state", "")
+
+            if state not in ("TURNED_IN", "RETURNED"):
+                sub_map[name] = None
+                continue
+
+            try:
+                text = _extract_text_from_submission(sub, token)
+                texts_by_student[name] = text
+                sub_map[name] = text
+            except Exception:
+                sub_map[name] = ""
+
+        # Plagiarism check
+        yield sse({"type": "status", "message": "Checking for plagiarism..."})
+        has_text = {k: v for k, v in texts_by_student.items() if v}
+        flags = _check_plagiarism(has_text)
+        plagiarism_students: set[str] = set()
+        for f in flags:
+            plagiarism_students.add(f["student_a"])
+            plagiarism_students.add(f["student_b"])
+
+        if flags:
+            yield sse({"type": "plagiarism", "flags": flags})
+
+        # Grade each student
+        total = len(sub_map)
+        for idx, (name, text) in enumerate(sub_map.items(), 1):
+            yield sse({"type": "status", "message": f"Grading {name} ({idx}/{total})..."})
+
+            if text is None:
+                yield sse({"type": "student_result", "student_name": name, "no_submission": True})
+                continue
+
+            if not text:
+                yield sse({"type": "student_result", "student_name": name, "no_text": True,
+                           "note": "Submission found but no readable text extracted"})
+                continue
+
+            try:
+                prompt = GRADE_PROMPT.format(
+                    max_points=max_points,
+                    rubric=rubric,
+                    text=text[:6000],
+                )
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": prompt}],
+                    response_format={"type": "json_object"},
+                    max_tokens=400,
+                )
+                result = json.loads(response.choices[0].message.content)
+                flagged = name in plagiarism_students
+                _save_result(
+                    teacher_user_id=user_id,
+                    course_id=course_id,
+                    assignment_id=assignment_id,
+                    assignment_title=assignment_title,
+                    student_name=name,
+                    ai_score=result.get("ai_score", 0),
+                    ai_reasoning=result.get("ai_reasoning", ""),
+                    grade=result.get("grade", 0),
+                    max_points=max_points,
+                    feedback=result.get("feedback", ""),
+                    plagiarism_flagged=flagged,
+                )
+                yield sse({
+                    "type": "student_result",
+                    "student_name": name,
+                    "ai_score": result.get("ai_score", 0),
+                    "ai_reasoning": result.get("ai_reasoning", ""),
+                    "grade": result.get("grade", 0),
+                    "max_points": max_points,
+                    "feedback": result.get("feedback", ""),
+                    "plagiarism_flagged": flagged,
+                })
+            except Exception as e:
+                yield sse({"type": "student_result", "student_name": name, "no_text": True,
+                           "note": f"Grading failed: {str(e)}"})
+
+        yield sse({"type": "done"})
+
+    except Exception as e:
+        yield sse({"type": "error", "message": str(e)})
+        yield sse({"type": "done"})

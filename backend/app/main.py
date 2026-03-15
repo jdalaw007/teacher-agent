@@ -1,17 +1,81 @@
+from contextlib import asynccontextmanager
+import asyncio
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.config import get_settings
-from app.routers import auth, classroom, drive, corpus, agent, assignments, students
+from app.routers import auth, classroom, drive, corpus, agent, assignments, students, linked_classes, scheduled_posts, chat, onboarding, dashboard, content, calendar, gmail, feedback, grader, class_preferences, files
 import traceback
 import sys
 
 settings = get_settings()
 
+
+async def scheduled_post_checker():
+    """Background task that checks for due scheduled posts every 15 minutes."""
+    from app.services.scheduled_posts import ScheduledPostService
+    while True:
+        try:
+            due_posts = ScheduledPostService.get_due_posts()
+            for post in due_posts:
+                try:
+                    result = ScheduledPostService.execute_post(post)
+                    if result["success"]:
+                        print(f"[Scheduler] Posted: {post['title']} (id={post['id']})")
+                    else:
+                        print(f"[Scheduler] Failed: {post['title']} — {result['error']}", file=sys.stderr)
+                except Exception as e:
+                    print(f"[Scheduler] Error executing post {post['id']}: {e}", file=sys.stderr)
+        except Exception as e:
+            print(f"[Scheduler] Check failed: {e}", file=sys.stderr)
+        await asyncio.sleep(900)  # 15 minutes
+
+
+async def conversation_auto_ender():
+    """Background task that auto-ends conversations idle for 30+ minutes."""
+    from app.services.database import get_db
+    while True:
+        try:
+            db = get_db()
+            try:
+                # Find conversations with no messages in 30+ minutes
+                stale = db.execute("""
+                    SELECT c.id, c.teacher_user_id FROM chat_conversations c
+                    WHERE c.ended_at IS NULL
+                    AND (
+                        SELECT MAX(m.created_at) FROM chat_messages m
+                        WHERE m.conversation_id = c.id
+                    ) < datetime('now', '-30 minutes')
+                """).fetchall()
+
+                for conv in stale:
+                    from app.services import memory
+                    memory.end_conversation(conv["id"], summary="Auto-ended due to inactivity.")
+                    print(f"[Scheduler] Auto-ended conversation {conv['id']}")
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"[Scheduler] Auto-end check failed: {e}", file=sys.stderr)
+        await asyncio.sleep(900)  # Check every 15 minutes
+
+
+@asynccontextmanager
+async def lifespan(app):
+    # Start background schedulers
+    task = asyncio.create_task(scheduled_post_checker())
+    auto_end_task = asyncio.create_task(conversation_auto_ender())
+    print("[Scheduler] Background scheduled post checker started")
+    print("[Scheduler] Background conversation auto-ender started")
+    yield
+    task.cancel()
+    auto_end_task.cancel()
+
+
 app = FastAPI(
     title="Teacher Agent API",
     description="API for Teacher Assistant Agent - Google Classroom integration",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan,
 )
 
 @app.exception_handler(Exception)
@@ -35,6 +99,18 @@ app.include_router(corpus.router, prefix="/corpus", tags=["Corpus"])
 app.include_router(agent.router, prefix="/agent", tags=["Agent"])
 app.include_router(assignments.router, prefix="/assignments", tags=["Assignments"])
 app.include_router(students.router, prefix="/students", tags=["Students"])
+app.include_router(linked_classes.router, prefix="/linked-classes", tags=["Linked Classes"])
+app.include_router(scheduled_posts.router, prefix="/scheduled-posts", tags=["Scheduled Posts"])
+app.include_router(chat.router, prefix="/chat", tags=["Chat"])
+app.include_router(onboarding.router, prefix="/onboarding", tags=["Onboarding"])
+app.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
+app.include_router(content.router, prefix="/content", tags=["Content"])
+app.include_router(calendar.router, prefix="/calendar", tags=["Calendar"])
+app.include_router(gmail.router, prefix="/gmail", tags=["Gmail"])
+app.include_router(feedback.router, prefix="/feedback", tags=["Feedback"])
+app.include_router(grader.router, prefix="/grader", tags=["Grader"])
+app.include_router(class_preferences.router, prefix="/class-preferences", tags=["Class Preferences"])
+app.include_router(files.router, prefix="/files", tags=["Files"])
 
 
 @app.get("/health")

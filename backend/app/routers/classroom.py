@@ -18,6 +18,10 @@ class CreateAssignmentRequest(BaseModel):
     publish: bool = True  # True = publish now, False = save as draft
 
 
+class CreateAnnouncementRequest(BaseModel):
+    text: str
+
+
 def get_token_from_request(request: Request) -> str:
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
@@ -128,6 +132,24 @@ async def create_assignment(course_id: str, request: Request, body: CreateAssign
             "assignment_id": result.get("id"),
             "title": result.get("title"),
             "state": result.get("state"),
+            "alternateLink": result.get("alternateLink")
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/courses/{course_id}/announcements")
+async def create_announcement(course_id: str, request: Request, body: CreateAnnouncementRequest):
+    """Post an announcement to the Classroom stream."""
+    token = get_token_from_request(request)
+    service = ClassroomService(token)
+
+    try:
+        result = service.create_announcement(course_id, body.text)
+        return {
+            "message": "Announcement posted",
+            "announcement_id": result.get("id"),
+            "text": result.get("text"),
             "alternateLink": result.get("alternateLink")
         }
     except Exception as e:

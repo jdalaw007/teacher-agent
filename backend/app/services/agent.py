@@ -10,61 +10,75 @@ DATA_DIR = Path(__file__).parent.parent.parent / "data" / "corpus"
 
 
 class AgentService:
-    def __init__(self, user_id: str, class_id: str):
+    def __init__(self, user_id: str, class_id: str = ""):
         self.user_id = user_id
         self.class_id = class_id
-        self.class_dir = DATA_DIR / user_id / class_id
+        self.class_dir = DATA_DIR / user_id / class_id if class_id else None
 
-        # Check if API key is configured
-        if not settings.openai_api_key or settings.openai_api_key == "your-api-key-here":
-            self.client = None
+        # Prefer user's own API key; fall back to env key
+        from app.services.profile import ProfileService
+        user_key = ProfileService(user_id).get_api_key()
+        api_key = user_key or settings.openai_api_key
+        if api_key and api_key != "your-api-key-here":
+            self.client = OpenAI(api_key=api_key)
         else:
-            self.client = OpenAI(api_key=settings.openai_api_key)
+            self.client = None
+
+        # Resolve linked class directories
+        from app.services.linked_classes import LinkedClassService
+        linked_service = LinkedClassService(user_id)
+        self._linked_class_ids = linked_service.get_linked_class_ids(class_id)
+
+    def _get_all_class_dirs(self) -> list[Path]:
+        """Return directories for all linked classes."""
+        return [DATA_DIR / self.user_id / cid for cid in self._linked_class_ids]
 
     def search_corpus(self, query: str, limit: int = 5) -> list:
-        """Search the corpus for relevant documents."""
+        """Search the corpus for relevant documents across linked classes."""
         results = []
         query_lower = query.lower()
 
-        index_file = self.class_dir / "index.json"
-        if not index_file.exists():
-            return results
+        for class_dir in self._get_all_class_dirs():
+            index_file = class_dir / "index.json"
+            if not index_file.exists():
+                continue
 
-        index = json.loads(index_file.read_text())
+            index = json.loads(index_file.read_text())
 
-        for doc_id, info in index.get("documents", {}).items():
-            doc_file = self.class_dir / f"{doc_id}.txt"
-            if doc_file.exists():
-                text = doc_file.read_text(encoding='utf-8')
-                if query_lower in text.lower():
-                    idx = text.lower().find(query_lower)
-                    snippet = text[max(0, idx-200):idx+500]
-                    results.append({
-                        "content": snippet,
-                        "metadata": info
-                    })
+            for doc_id, info in index.get("documents", {}).items():
+                doc_file = class_dir / f"{doc_id}.txt"
+                if doc_file.exists():
+                    text = doc_file.read_text(encoding='utf-8')
+                    if query_lower in text.lower():
+                        idx = text.lower().find(query_lower)
+                        snippet = text[max(0, idx-200):idx+500]
+                        results.append({
+                            "content": snippet,
+                            "metadata": info
+                        })
 
         return results[:limit]
 
     def get_documents_by_ids(self, doc_ids: list[str]) -> list:
-        """Get full document content by IDs."""
+        """Get full document content by IDs across linked classes."""
         results = []
 
-        index_file = self.class_dir / "index.json"
-        if not index_file.exists():
-            return results
+        for class_dir in self._get_all_class_dirs():
+            index_file = class_dir / "index.json"
+            if not index_file.exists():
+                continue
 
-        index = json.loads(index_file.read_text())
+            index = json.loads(index_file.read_text())
 
-        for doc_id in doc_ids:
-            if doc_id in index.get("documents", {}):
-                doc_file = self.class_dir / f"{doc_id}.txt"
-                if doc_file.exists():
-                    text = doc_file.read_text(encoding='utf-8')
-                    results.append({
-                        "content": text,
-                        "metadata": index["documents"][doc_id]
-                    })
+            for doc_id in doc_ids:
+                if doc_id in index.get("documents", {}):
+                    doc_file = class_dir / f"{doc_id}.txt"
+                    if doc_file.exists():
+                        text = doc_file.read_text(encoding='utf-8')
+                        results.append({
+                            "content": text,
+                            "metadata": index["documents"][doc_id]
+                        })
 
         return results
 

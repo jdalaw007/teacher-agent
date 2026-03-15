@@ -2,9 +2,9 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 import json
-import hashlib
 from pathlib import Path
 from datetime import datetime
+from app.services.token_store import get_user_id_from_token
 
 router = APIRouter()
 
@@ -17,7 +17,7 @@ def get_user_id(request: Request) -> str:
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         token = auth[7:]
-        return hashlib.md5(token.encode()).hexdigest()[:16]
+        return get_user_id_from_token(token)
     return "anonymous"
 
 

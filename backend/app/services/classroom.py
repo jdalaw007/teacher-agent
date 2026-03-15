@@ -80,6 +80,19 @@ class ClassroomService:
             .execute()
         )
 
+    def create_announcement(self, course_id: str, text: str) -> dict:
+        """Create an announcement on the Classroom stream."""
+        body = {
+            "text": text,
+            "state": "PUBLISHED",
+        }
+        return (
+            self.service.courses()
+            .announcements()
+            .create(courseId=course_id, body=body)
+            .execute()
+        )
+
     def list_students(self, course_id: str) -> list:
         """List all students enrolled in a course."""
         results = (

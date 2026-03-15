@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import Navbar from '@/components/Navbar'
+import { useRouter, useSearchParams } from 'next/navigation'
+import Sidebar from '@/components/Sidebar'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -16,6 +16,8 @@ interface Document {
   title: string
   filename?: string
   type?: string
+  shared?: boolean
+  source_class_id?: string
 }
 
 interface Student {
@@ -26,9 +28,18 @@ interface Student {
   classroom_user_id: string | null
 }
 
+interface StudentGroup {
+  id: number
+  name: string
+  description: string
+  class_id: string
+  member_count: number
+}
+
 export default function AgentPage() {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<'upload' | 'generate' | 'post'>('upload')
+  const searchParams = useSearchParams()
+  const [activeTab, setActiveTab] = useState<'generate' | 'schedule'>('generate')
   const [courses, setCourses] = useState<Course[]>([])
   const [selectedClassId, setSelectedClassId] = useState<string>('')
   const [documents, setDocuments] = useState<Document[]>([])
@@ -51,6 +62,10 @@ export default function AgentPage() {
   const [additionalInstructions, setAdditionalInstructions] = useState('')
   const [generatedAssignment, setGeneratedAssignment] = useState('')
 
+  // Content checker state
+  const [checkResult, setCheckResult] = useState('')
+  const [checkStatus, setCheckStatus] = useState<'idle' | 'checking' | 'done'>('idle')
+
   // Assignment history (saved assignments)
   const [savedAssignments, setSavedAssignments] = useState<{
     id: string
@@ -71,6 +86,29 @@ export default function AgentPage() {
   const [postPoints, setPostPoints] = useState<string>('')
   const [postDueDate, setPostDueDate] = useState('')
   const [postAsDraft, setPostAsDraft] = useState(false)
+  const [postMode, setPostMode] = useState<'assignment' | 'announcement'>('assignment')
+
+  // Scheduled posts state
+  const [scheduledPosts, setScheduledPosts] = useState<{
+    id: number; class_id: string; post_type: string; title: string; content: string;
+    frequency: string; day_of_week: number | null; week_of_month: number | null;
+    time_of_day: string; max_points: number | null; active: number;
+    last_posted_at: string | null; next_post_at: string; created_at: string;
+  }[]>([])
+  const [editingPostId, setEditingPostId] = useState<number | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editContent, setEditContent] = useState('')
+  const [editDayOfWeek, setEditDayOfWeek] = useState(0)
+  const [editTime, setEditTime] = useState('08:00')
+  const [showScheduleForm, setShowScheduleForm] = useState(false)
+  const [schedPostType, setSchedPostType] = useState<'assignment' | 'announcement'>('assignment')
+  const [schedTitle, setSchedTitle] = useState('')
+  const [schedContent, setSchedContent] = useState('')
+  const [schedFrequency, setSchedFrequency] = useState('weekly')
+  const [schedDayOfWeek, setSchedDayOfWeek] = useState(0)
+  const [schedWeekOfMonth, setSchedWeekOfMonth] = useState(1)
+  const [schedTime, setSchedTime] = useState('08:00')
+  const [schedMaxPoints, setSchedMaxPoints] = useState<string>('')
 
   // Document selection and viewer state
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set())
@@ -80,11 +118,19 @@ export default function AgentPage() {
   // Student selection state
   const [classStudents, setClassStudents] = useState<Student[]>([])
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<number>>(new Set())
+  const [classGroups, setClassGroups] = useState<StudentGroup[]>([])
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
+  const [personalizationMode, setPersonalizationMode] = useState<'none' | 'group' | 'individual'>('none')
 
   // Google Drive import state
   const [driveFiles, setDriveFiles] = useState<{id: string, name: string, mimeType: string}[]>([])
   const [loadingDriveFiles, setLoadingDriveFiles] = useState(false)
   const [showDriveImport, setShowDriveImport] = useState(false)
+
+  // URL import state
+  const [urlInput, setUrlInput] = useState('')
+  const [urlTitle, setUrlTitle] = useState('')
+  const [loadingUrl, setLoadingUrl] = useState(false)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
 
@@ -96,13 +142,50 @@ export default function AgentPage() {
     fetchCourses()
   }, [token, router])
 
+  // Pre-select class from URL ?class_id=
+  useEffect(() => {
+    const classIdFromUrl = searchParams.get('class_id')
+    if (classIdFromUrl) setSelectedClassId(classIdFromUrl)
+  }, [searchParams])
+
   useEffect(() => {
     if (selectedClassId) {
-      fetchDocuments()
       fetchSavedAssignments()
       fetchClassStudents()
+      fetchClassGroups()
+      fetchScheduledPosts()
     }
   }, [selectedClassId])
+
+  const fetchClassGroups = async () => {
+    if (!selectedClassId) return
+    try {
+      const res = await fetch(`${API_URL}/students/groups?class_id=${selectedClassId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setClassGroups(data.groups || [])
+      }
+    } catch {
+      console.error('Failed to fetch groups')
+    }
+  }
+
+  const fetchScheduledPosts = async () => {
+    if (!selectedClassId) return
+    try {
+      const res = await fetch(`${API_URL}/scheduled-posts/list?class_id=${selectedClassId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setScheduledPosts(data.scheduled_posts || [])
+      }
+    } catch {
+      console.error('Failed to fetch scheduled posts')
+    }
+  }
 
   const fetchClassStudents = async () => {
     if (!selectedClassId) return
@@ -241,53 +324,236 @@ export default function AgentPage() {
   }
 
   const postToClassroom = async () => {
-    if (!generatedAssignment || !selectedClassId || !postTitle) return
+    if (!generatedAssignment || !selectedClassId) return
     setLoading(true)
 
-    // Parse due date if provided
-    let dueYear, dueMonth, dueDay
-    if (postDueDate) {
-      const date = new Date(postDueDate)
-      dueYear = date.getFullYear()
-      dueMonth = date.getMonth() + 1
-      dueDay = date.getDate()
-    }
-
     try {
-      const res = await fetch(`${API_URL}/classroom/courses/${selectedClassId}/assignments`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          title: postTitle,
-          description: generatedAssignment,
-          max_points: postPoints ? parseInt(postPoints) : null,
-          due_year: dueYear,
-          due_month: dueMonth,
-          due_day: dueDay,
-          publish: !postAsDraft
+      if (postMode === 'announcement') {
+        // Post as announcement to stream
+        const res = await fetch(`${API_URL}/classroom/courses/${selectedClassId}/announcements`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: generatedAssignment }),
         })
-      })
-
-      if (res.ok) {
-        const data = await res.json()
-        setMessage({
-          type: 'success',
-          text: postAsDraft
-            ? 'Assignment saved as draft in Google Classroom!'
-            : 'Assignment posted to Google Classroom!'
-        })
-        setShowPostModal(false)
+        if (res.ok) {
+          setMessage({ type: 'success', text: 'Announcement posted to Classroom stream!' })
+          setShowPostModal(false)
+        } else {
+          const err = await res.json()
+          setMessage({ type: 'error', text: err.detail || 'Failed to post announcement' })
+        }
       } else {
-        const err = await res.json()
-        setMessage({ type: 'error', text: err.detail || 'Failed to post to Classroom' })
+        // Post as assignment
+        if (!postTitle) return
+        let dueYear, dueMonth, dueDay
+        if (postDueDate) {
+          const date = new Date(postDueDate)
+          dueYear = date.getFullYear()
+          dueMonth = date.getMonth() + 1
+          dueDay = date.getDate()
+        }
+
+        const res = await fetch(`${API_URL}/classroom/courses/${selectedClassId}/assignments`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: postTitle,
+            description: generatedAssignment,
+            max_points: postPoints ? parseInt(postPoints) : null,
+            due_year: dueYear,
+            due_month: dueMonth,
+            due_day: dueDay,
+            publish: !postAsDraft,
+          }),
+        })
+
+        if (res.ok) {
+          setMessage({
+            type: 'success',
+            text: postAsDraft ? 'Assignment saved as draft in Google Classroom!' : 'Assignment posted to Google Classroom!',
+          })
+          setShowPostModal(false)
+        } else {
+          const err = await res.json()
+          setMessage({ type: 'error', text: err.detail || 'Failed to post to Classroom' })
+        }
       }
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to post to Classroom' })
     } finally {
       setLoading(false)
+    }
+  }
+
+  // --- Scheduled Posts ---
+
+  const handleCreateScheduledPost = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!schedTitle || !schedContent || !selectedClassId) return
+    setLoading(true)
+    setMessage(null)
+
+    try {
+      const res = await fetch(`${API_URL}/scheduled-posts/create`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          class_id: selectedClassId,
+          post_type: schedPostType,
+          title: schedTitle,
+          content: schedContent,
+          frequency: schedFrequency,
+          day_of_week: schedDayOfWeek,
+          week_of_month: schedFrequency === 'monthly' ? schedWeekOfMonth : null,
+          time_of_day: schedTime,
+          max_points: schedPostType === 'assignment' && schedMaxPoints ? parseInt(schedMaxPoints) : null,
+        }),
+      })
+      if (res.ok) {
+        setMessage({ type: 'success', text: 'Scheduled post created!' })
+        setShowScheduleForm(false)
+        setSchedTitle('')
+        setSchedContent('')
+        fetchScheduledPosts()
+      } else {
+        const err = await res.json()
+        setMessage({ type: 'error', text: err.detail || 'Failed to create scheduled post' })
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to create scheduled post' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const checkDuePosts = async () => {
+    try {
+      await fetch(`${API_URL}/scheduled-posts/check-due`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      fetchScheduledPosts()
+    } catch {}
+  }
+
+  const startEditPost = (sp: typeof scheduledPosts[0]) => {
+    setEditingPostId(sp.id)
+    setEditTitle(sp.title)
+    setEditContent(sp.content)
+    setEditDayOfWeek(sp.day_of_week ?? 0)
+    setEditTime(sp.time_of_day || '08:00')
+  }
+
+  const handleSaveEdit = async (postId: number) => {
+    try {
+      const res = await fetch(`${API_URL}/scheduled-posts/${postId}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: editTitle, content: editContent, day_of_week: editDayOfWeek, time_of_day: editTime }),
+      })
+      if (res.ok) {
+        setEditingPostId(null)
+        fetchScheduledPosts()
+        setMessage({ type: 'success', text: 'Post updated' })
+      }
+    } catch {}
+  }
+
+  const handleDeleteSchedule = async (postId: number) => {
+    if (!confirm('Delete this scheduled post?')) return
+    try {
+      const res = await fetch(`${API_URL}/scheduled-posts/${postId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        setMessage({ type: 'success', text: 'Scheduled post deleted' })
+        fetchScheduledPosts()
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Delete failed' })
+    }
+  }
+
+  const handleToggleSchedule = async (postId: number) => {
+    try {
+      const res = await fetch(`${API_URL}/scheduled-posts/${postId}/toggle`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) fetchScheduledPosts()
+    } catch {
+      // silent
+    }
+  }
+
+  const handlePostNow = async (postId: number) => {
+    setLoading(true)
+    setMessage(null)
+    try {
+      const res = await fetch(`${API_URL}/scheduled-posts/${postId}/post-now`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        setMessage({ type: 'success', text: 'Posted successfully!' })
+        fetchScheduledPosts()
+      } else {
+        const err = await res.json()
+        setMessage({ type: 'error', text: err.detail || 'Failed to post' })
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to post' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleScheduleFromGenerated = () => {
+    if (!generatedAssignment) return
+    setSchedTitle(`${topic} - ${assignmentType}`)
+    setSchedContent(generatedAssignment)
+    setSchedPostType('assignment')
+    setShowScheduleForm(true)
+    setActiveTab('schedule')
+  }
+
+  const handleCheckContent = async () => {
+    if (!generatedAssignment || !token) return
+    setCheckResult('')
+    setCheckStatus('checking')
+    try {
+      const response = await fetch(`${API_URL}/content/check`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: generatedAssignment,
+          content_type: assignmentType,
+          grade_level: gradeLevel || undefined,
+          subject: topic || undefined,
+        }),
+      })
+      if (!response.ok) throw new Error('Check failed')
+      const reader = response.body!.getReader()
+      const decoder = new TextDecoder()
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const lines = decoder.decode(value).split('\n')
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              if (data.type === 'content') setCheckResult(prev => prev + data.content)
+              else if (data.type === 'done') setCheckStatus('done')
+            } catch {}
+          }
+        }
+      }
+      setCheckStatus('done')
+    } catch {
+      setCheckResult('Content check failed. Please try again.')
+      setCheckStatus('done')
     }
   }
 
@@ -398,6 +664,37 @@ export default function AgentPage() {
     }
   }
 
+  const handleUrlImport = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!urlInput || !selectedClassId) return
+    setLoadingUrl(true)
+    setMessage(null)
+    const formData = new FormData()
+    formData.append('url', urlInput)
+    formData.append('class_id', selectedClassId)
+    if (urlTitle) formData.append('title', urlTitle)
+    try {
+      const res = await fetch(`${API_URL}/corpus/import-from-url`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setMessage({ type: 'success', text: `Imported "${data.title}"` })
+        setUrlInput('')
+        setUrlTitle('')
+        fetchDocuments()
+      } else {
+        setMessage({ type: 'error', text: data.detail || 'Import failed' })
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Import failed. Check the URL and try again.' })
+    } finally {
+      setLoadingUrl(false)
+    }
+  }
+
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!topic || !selectedClassId) return
@@ -405,6 +702,8 @@ export default function AgentPage() {
     setLoading(true)
     setMessage(null)
     setGeneratedAssignment('')
+    setCheckResult('')
+    setCheckStatus('idle')
     setLoadingStatus('Searching documents...')
     setLoadingProgress(10)
 
@@ -432,11 +731,13 @@ export default function AgentPage() {
         body: JSON.stringify({
           topic,
           class_id: selectedClassId,
+          class_name: courses.find(c => c.id === selectedClassId)?.name || selectedClassId,
           grade_level: gradeLevel || null,
           assignment_type: assignmentType,
           additional_instructions: additionalInstructions || null,
           selected_doc_ids: selectedDocIds.size > 0 ? Array.from(selectedDocIds) : null,
-          student_ids: selectedStudentIds.size > 0 ? Array.from(selectedStudentIds) : null
+          student_ids: personalizationMode === 'individual' && selectedStudentIds.size > 0 ? Array.from(selectedStudentIds) : null,
+          group_id: personalizationMode === 'group' ? selectedGroupId : null,
         })
       })
 
@@ -448,8 +749,9 @@ export default function AgentPage() {
         const data = await res.json()
         console.log('Generate response:', data)
         setGeneratedAssignment(data.assignment || 'No content generated')
-        setSelectedAssignmentId(null) // Clear selection since this is new
-        setMessage({ type: 'success', text: `Generated using ${data.sources_used} source(s). Click "Save" to keep it.` })
+        setSelectedAssignmentId(null)
+        const savedNote = data.saved_filename ? ` Saved to My Files as "${data.saved_filename}".` : ''
+        setMessage({ type: 'success', text: `Generated using ${data.sources_used} source(s).${savedNote}` })
       } else {
         const err = await res.json()
         setMessage({ type: 'error', text: err.detail || 'Generation failed' })
@@ -589,10 +891,10 @@ export default function AgentPage() {
   }
 
   return (
-    <div>
-      <Navbar userName="" />
+    <div style={styles.app}>
+      <Sidebar />
       <main style={styles.main}>
-        <button onClick={() => router.push('/dashboard')} style={styles.backButton}>
+        <button onClick={() => router.push('/classes')} style={styles.backButton}>
           ← Back to Dashboard
         </button>
 
@@ -623,16 +925,16 @@ export default function AgentPage() {
         {/* Tabs */}
         <div style={styles.tabs}>
           <button
-            style={activeTab === 'upload' ? styles.tabActive : styles.tab}
-            onClick={() => setActiveTab('upload')}
-          >
-            Upload Materials
-          </button>
-          <button
             style={activeTab === 'generate' ? styles.tabActive : styles.tab}
             onClick={() => setActiveTab('generate')}
           >
             Generate Assignment
+          </button>
+          <button
+            style={activeTab === 'schedule' ? styles.tabActive : styles.tab}
+            onClick={() => { setActiveTab('schedule'); checkDuePosts() }}
+          >
+            Scheduled Posts
           </button>
           <button
             style={styles.tab}
@@ -646,94 +948,6 @@ export default function AgentPage() {
         {message && (
           <div style={message.type === 'success' ? styles.success : styles.error}>
             {message.text}
-          </div>
-        )}
-
-        {/* Upload Tab */}
-        {activeTab === 'upload' && (
-          <div style={styles.content}>
-            <div style={styles.section}>
-              <h2 style={styles.sectionTitle}>Upload a File</h2>
-              <p style={styles.hintText}>Supports: Word docs (.docx), PDFs, text files</p>
-              <form onSubmit={handleFileUpload} style={styles.form}>
-                <input
-                  type="file"
-                  accept=".pdf,.txt,.md,.docx"
-                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                  style={styles.fileInput}
-                />
-                <input
-                  type="text"
-                  placeholder="Title (optional)"
-                  value={uploadTitle}
-                  onChange={(e) => setUploadTitle(e.target.value)}
-                  style={styles.input}
-                />
-                <button type="submit" disabled={!uploadFile || loading} style={styles.button}>
-                  {loading ? 'Uploading...' : 'Upload File'}
-                </button>
-              </form>
-            </div>
-
-            <div style={styles.section}>
-              <h2 style={styles.sectionTitle}>Import from Google Drive</h2>
-              <p style={styles.hintText}>Import Google Docs, Word docs, or PDFs directly from your Drive</p>
-              <button
-                onClick={fetchDriveFiles}
-                disabled={loadingDriveFiles}
-                style={styles.button}
-              >
-                {loadingDriveFiles ? 'Loading...' : 'Browse Google Drive'}
-              </button>
-            </div>
-
-            <div style={styles.section}>
-              <h2 style={styles.sectionTitle}>Or Paste Text</h2>
-              <form onSubmit={handleTextUpload} style={styles.form}>
-                <input
-                  type="text"
-                  placeholder="Title"
-                  value={textTitle}
-                  onChange={(e) => setTextTitle(e.target.value)}
-                  style={styles.input}
-                  required
-                />
-                <textarea
-                  placeholder="Paste lesson plan, notes, or other content here..."
-                  value={textContent}
-                  onChange={(e) => setTextContent(e.target.value)}
-                  style={styles.textarea}
-                  rows={8}
-                  required
-                />
-                <button type="submit" disabled={!textContent || !textTitle || loading} style={styles.button}>
-                  {loading ? 'Adding...' : 'Add to Corpus'}
-                </button>
-              </form>
-            </div>
-
-            <div style={styles.section}>
-              <h2 style={styles.sectionTitle}>
-                Materials for {courses.find(c => c.id === selectedClassId)?.name || 'this class'} ({documents.length})
-              </h2>
-              {documents.length === 0 ? (
-                <p style={styles.emptyText}>No materials uploaded yet for this class.</p>
-              ) : (
-                <ul style={styles.docList}>
-                  {documents.map((doc) => (
-                    <li key={doc.id} style={styles.docItem}>
-                      <span>{doc.title || doc.filename || doc.id}</span>
-                      <button
-                        onClick={() => handleDeleteDocument(doc.id)}
-                        style={styles.deleteButton}
-                      >
-                        Delete
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
           </div>
         )}
 
@@ -766,6 +980,9 @@ export default function AgentPage() {
                           style={styles.checkbox}
                         />
                         <span style={styles.docTitle}>{doc.title || doc.filename || doc.id}</span>
+                        {doc.shared && (
+                          <span style={styles.sharedBadge}>Shared</span>
+                        )}
                       </label>
                       <button
                         onClick={() => viewDocument(doc)}
@@ -819,35 +1036,69 @@ export default function AgentPage() {
                   style={styles.textarea}
                   rows={3}
                 />
-                {/* Student Selection */}
-                {classStudents.length > 0 && (
+                {/* Personalization Selector */}
+                {(classStudents.length > 0 || classGroups.length > 0) && (
                   <div style={styles.studentSelector}>
                     <label style={styles.studentSelectorLabel}>
-                      Personalize for students (optional):
+                      Personalize for (optional):
                     </label>
-                    <p style={styles.studentSelectorHint}>
-                      {selectedStudentIds.size > 0
-                        ? `${selectedStudentIds.size} student(s) selected — assignment will be tailored to their profiles`
-                        : 'Select students to generate individualized content based on their profiles and notes'}
-                    </p>
-                    <div style={styles.studentCheckboxList}>
-                      {classStudents.map((student) => (
-                        <label key={student.id} style={styles.studentCheckboxLabel}>
-                          <input
-                            type="checkbox"
-                            checked={selectedStudentIds.has(student.id)}
-                            onChange={() => toggleStudentSelection(student.id)}
-                            style={styles.checkbox}
-                          />
-                          <span style={styles.studentCheckboxName}>{student.name}</span>
-                          {student.notes && (
-                            <span style={styles.studentNotesIndicator} title={student.notes}>
-                              has notes
-                            </span>
-                          )}
+                    <div style={styles.personalizationModeRow}>
+                      <label style={styles.radioLabel}>
+                        <input type="radio" name="pmode" checked={personalizationMode === 'none'} onChange={() => { setPersonalizationMode('none'); setSelectedGroupId(null); setSelectedStudentIds(new Set()); }} />
+                        None
+                      </label>
+                      {classGroups.length > 0 && (
+                        <label style={styles.radioLabel}>
+                          <input type="radio" name="pmode" checked={personalizationMode === 'group'} onChange={() => { setPersonalizationMode('group'); setSelectedStudentIds(new Set()); }} />
+                          Group
                         </label>
-                      ))}
+                      )}
+                      <label style={styles.radioLabel}>
+                        <input type="radio" name="pmode" checked={personalizationMode === 'individual'} onChange={() => { setPersonalizationMode('individual'); setSelectedGroupId(null); }} />
+                        Individual Students
+                      </label>
                     </div>
+
+                    {personalizationMode === 'group' && classGroups.length > 0 && (
+                      <div style={{ marginTop: '0.75rem' }}>
+                        <select
+                          value={selectedGroupId ?? ''}
+                          onChange={(e) => setSelectedGroupId(e.target.value ? Number(e.target.value) : null)}
+                          style={styles.input}
+                        >
+                          <option value="">Select a group...</option>
+                          {classGroups.map((g) => (
+                            <option key={g.id} value={g.id}>{g.name} ({g.member_count} students)</option>
+                          ))}
+                        </select>
+                        {selectedGroupId && (
+                          <p style={styles.studentSelectorHint}>
+                            Assignment will be tailored to the group&apos;s profile and all member profiles.
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {personalizationMode === 'individual' && classStudents.length > 0 && (
+                      <div style={styles.studentCheckboxList}>
+                        {classStudents.map((student) => (
+                          <label key={student.id} style={styles.studentCheckboxLabel}>
+                            <input
+                              type="checkbox"
+                              checked={selectedStudentIds.has(student.id)}
+                              onChange={() => toggleStudentSelection(student.id)}
+                              style={styles.checkbox}
+                            />
+                            <span style={styles.studentCheckboxName}>{student.name}</span>
+                            {student.notes && (
+                              <span style={styles.studentNotesIndicator} title={student.notes}>
+                                has notes
+                              </span>
+                            )}
+                          </label>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -894,7 +1145,43 @@ export default function AgentPage() {
                       >
                         Post to Classroom →
                       </button>
+                      <button
+                        onClick={handleScheduleFromGenerated}
+                        style={{...styles.postButton, background: '#9334e6'}}
+                      >
+                        Schedule Recurring
+                      </button>
+                      <button
+                        onClick={handleCheckContent}
+                        disabled={checkStatus === 'checking'}
+                        style={{...styles.postButton, background: '#e67c34', opacity: checkStatus === 'checking' ? 0.6 : 1}}
+                      >
+                        {checkStatus === 'checking' ? 'Checking...' : 'Check Content'}
+                      </button>
                     </div>
+
+                    {/* Content checker result panel */}
+                    {(checkResult || checkStatus === 'checking') && (
+                      <div style={styles.checkPanel}>
+                        <div style={styles.checkHeader}>
+                          <span>Content Review</span>
+                          {checkStatus === 'done' && (
+                            <button
+                              onClick={() => { setCheckResult(''); setCheckStatus('idle') }}
+                              style={styles.checkClose}
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                        <div style={styles.checkBody}>
+                          {checkStatus === 'checking' && !checkResult && (
+                            <span style={{color: '#888', fontSize: '0.9rem'}}>Reviewing content...</span>
+                          )}
+                          <pre style={styles.checkPre}>{checkResult}</pre>
+                        </div>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <p style={styles.emptyText}>Your generated assignment will appear here.</p>
@@ -938,6 +1225,233 @@ export default function AgentPage() {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Schedule Tab */}
+        {activeTab === 'schedule' && (
+          <div style={styles.content}>
+            <div style={styles.section}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h2 style={styles.sectionTitle}>Scheduled Recurring Posts</h2>
+                <button onClick={() => setShowScheduleForm(!showScheduleForm)} style={styles.button}>
+                  {showScheduleForm ? 'Cancel' : 'New Scheduled Post'}
+                </button>
+              </div>
+
+              <p style={styles.hintText}>
+                Set up recurring posts that automatically publish to your Classroom on a schedule (e.g., weekly reading diary, monthly book report).
+              </p>
+
+              {showScheduleForm && (
+                <form onSubmit={handleCreateScheduledPost} style={{ ...styles.form, background: '#f8f9fa', padding: '1.25rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
+                  <div style={{ display: 'flex', gap: '1rem' }}>
+                    <label style={styles.radioLabel}>
+                      <input type="radio" checked={schedPostType === 'assignment'} onChange={() => setSchedPostType('assignment')} />
+                      Assignment
+                    </label>
+                    <label style={styles.radioLabel}>
+                      <input type="radio" checked={schedPostType === 'announcement'} onChange={() => setSchedPostType('announcement')} />
+                      Announcement (Stream)
+                    </label>
+                  </div>
+
+                  <input
+                    type="text"
+                    placeholder="Title"
+                    value={schedTitle}
+                    onChange={(e) => setSchedTitle(e.target.value)}
+                    style={styles.input}
+                    required
+                  />
+                  <textarea
+                    placeholder="Content (this text will be posted each time)"
+                    value={schedContent}
+                    onChange={(e) => setSchedContent(e.target.value)}
+                    style={styles.textarea}
+                    rows={5}
+                    required
+                  />
+
+                  <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: '150px' }}>
+                      <label style={styles.schedLabel}>Frequency</label>
+                      <select value={schedFrequency} onChange={(e) => setSchedFrequency(e.target.value)} style={styles.input}>
+                        <option value="weekly">Weekly</option>
+                        <option value="biweekly">Every 2 Weeks</option>
+                        <option value="monthly">Monthly</option>
+                      </select>
+                    </div>
+
+                    <div style={{ flex: 1, minWidth: '150px' }}>
+                      <label style={styles.schedLabel}>Day of Week</label>
+                      <select value={schedDayOfWeek} onChange={(e) => setSchedDayOfWeek(Number(e.target.value))} style={styles.input}>
+                        <option value={0}>Monday</option>
+                        <option value={1}>Tuesday</option>
+                        <option value={2}>Wednesday</option>
+                        <option value={3}>Thursday</option>
+                        <option value={4}>Friday</option>
+                        <option value={5}>Saturday</option>
+                        <option value={6}>Sunday</option>
+                      </select>
+                    </div>
+
+                    {schedFrequency === 'monthly' && (
+                      <div style={{ flex: 1, minWidth: '150px' }}>
+                        <label style={styles.schedLabel}>Which Week</label>
+                        <select value={schedWeekOfMonth} onChange={(e) => setSchedWeekOfMonth(Number(e.target.value))} style={styles.input}>
+                          <option value={1}>1st</option>
+                          <option value={2}>2nd</option>
+                          <option value={3}>3rd</option>
+                          <option value={4}>4th</option>
+                        </select>
+                      </div>
+                    )}
+
+                    <div style={{ flex: 1, minWidth: '120px' }}>
+                      <label style={styles.schedLabel}>Time</label>
+                      <input type="time" value={schedTime} onChange={(e) => setSchedTime(e.target.value)} style={styles.input} />
+                    </div>
+                  </div>
+
+                  {schedPostType === 'assignment' && (
+                    <input
+                      type="number"
+                      placeholder="Max Points (optional)"
+                      value={schedMaxPoints}
+                      onChange={(e) => setSchedMaxPoints(e.target.value)}
+                      style={styles.input}
+                      min="0"
+                    />
+                  )}
+
+                  <p style={styles.hintText}>
+                    {schedFrequency === 'monthly'
+                      ? `Will post on the ${['1st','2nd','3rd','4th'][schedWeekOfMonth-1]} ${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][schedDayOfWeek]} of every month at ${schedTime}`
+                      : schedFrequency === 'biweekly'
+                        ? `Will post every other ${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][schedDayOfWeek]} at ${schedTime}`
+                        : `Will post every ${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][schedDayOfWeek]} at ${schedTime}`
+                    }
+                  </p>
+
+                  <button type="submit" disabled={loading || !schedTitle || !schedContent} style={styles.button}>
+                    {loading ? 'Creating...' : 'Create Scheduled Post'}
+                  </button>
+                </form>
+              )}
+
+              {/* Scheduled Posts List */}
+              {scheduledPosts.length === 0 ? (
+                <p style={styles.emptyText}>No scheduled posts yet for this class.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {scheduledPosts.map((sp) => (
+                    <div key={sp.id} style={{
+                      padding: '1rem',
+                      background: sp.active ? '#fff' : '#f8f9fa',
+                      borderRadius: '8px',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                      opacity: sp.active ? 1 : 0.6,
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                            <strong>{sp.title}</strong>
+                            <span style={{
+                              fontSize: '0.7rem',
+                              padding: '2px 8px',
+                              borderRadius: '10px',
+                              background: sp.post_type === 'announcement' ? '#fff3cd' : '#e8f0fe',
+                              color: sp.post_type === 'announcement' ? '#856404' : '#1a73e8',
+                            }}>
+                              {sp.post_type === 'announcement' ? 'Announcement' : 'Assignment'}
+                            </span>
+                            <span style={{
+                              fontSize: '0.7rem',
+                              padding: '2px 8px',
+                              borderRadius: '10px',
+                              background: sp.active ? '#d4edda' : '#f8d7da',
+                              color: sp.active ? '#155724' : '#721c24',
+                            }}>
+                              {sp.active ? 'Active' : 'Paused'}
+                            </span>
+                          </div>
+                          <p style={{ fontSize: '0.85rem', color: '#555', margin: '0.25rem 0' }}>
+                            {sp.frequency === 'monthly'
+                              ? `${['1st','2nd','3rd','4th'][(sp.week_of_month || 1) - 1]} ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][sp.day_of_week || 0]} of every month`
+                              : sp.frequency === 'biweekly'
+                                ? `Every other ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][sp.day_of_week || 0]}`
+                                : `Every ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][sp.day_of_week || 0]}`
+                            } at {sp.time_of_day}
+                          </p>
+                          <p style={{ fontSize: '0.8rem', color: '#888', margin: '0.25rem 0' }}>
+                            Next: {new Date(sp.next_post_at).toLocaleDateString()}
+                            {sp.last_posted_at && ` | Last: ${new Date(sp.last_posted_at).toLocaleDateString()}`}
+                          </p>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                          <button onClick={() => handlePostNow(sp.id)} disabled={loading} style={{ ...styles.smallButton, background: '#28a745', color: '#fff', border: 'none' }}>
+                            Post Now
+                          </button>
+                          <button onClick={() => handleToggleSchedule(sp.id)} style={styles.smallButton}>
+                            {sp.active ? 'Pause' : 'Resume'}
+                          </button>
+                          <button onClick={() => startEditPost(sp)} style={{ ...styles.smallButton, color: '#1a73e8' }}>
+                            Edit
+                          </button>
+                          <button onClick={() => handleDeleteSchedule(sp.id)} style={{ ...styles.smallButton, color: '#dc3545' }}>
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                      {editingPostId === sp.id ? (
+                        <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <input
+                            type="text"
+                            value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            style={styles.input}
+                            placeholder="Title"
+                          />
+                          <textarea
+                            value={editContent}
+                            onChange={(e) => setEditContent(e.target.value)}
+                            style={{ ...styles.textarea, fontSize: '0.9rem' }}
+                            rows={4}
+                          />
+                          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                            <div style={{ flex: 1, minWidth: '140px' }}>
+                              <label style={styles.schedLabel}>Day of Week</label>
+                              <select value={editDayOfWeek} onChange={(e) => setEditDayOfWeek(Number(e.target.value))} style={styles.input}>
+                                <option value={0}>Monday</option>
+                                <option value={1}>Tuesday</option>
+                                <option value={2}>Wednesday</option>
+                                <option value={3}>Thursday</option>
+                                <option value={4}>Friday</option>
+                                <option value={5}>Saturday</option>
+                                <option value={6}>Sunday</option>
+                              </select>
+                            </div>
+                            <div style={{ flex: 1, minWidth: '120px' }}>
+                              <label style={styles.schedLabel}>Time</label>
+                              <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} style={styles.input} />
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button onClick={() => handleSaveEdit(sp.id)} style={{ ...styles.smallButton, background: '#28a745', color: '#fff', border: 'none' }}>Save</button>
+                            <button onClick={() => setEditingPostId(null)} style={styles.smallButton}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p style={{ fontSize: '0.85rem', color: '#666', margin: '0.5rem 0 0 0', maxHeight: '60px', overflow: 'hidden' }}>
+                          {sp.content.length > 200 ? sp.content.slice(0, 200) + '...' : sp.content}
+                        </p>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -999,41 +1513,64 @@ export default function AgentPage() {
                 <button onClick={() => setShowPostModal(false)} style={styles.closeButton}>×</button>
               </div>
               <div style={styles.saveModalContent}>
-                <label style={styles.saveLabel}>Assignment Title:</label>
-                <input
-                  type="text"
-                  value={postTitle}
-                  onChange={(e) => setPostTitle(e.target.value)}
-                  style={styles.input}
-                  placeholder="Enter assignment title"
-                />
+                {/* Post type toggle */}
+                <label style={styles.saveLabel}>Post as:</label>
+                <div style={styles.personalizationModeRow}>
+                  <label style={styles.radioLabel}>
+                    <input type="radio" checked={postMode === 'assignment'} onChange={() => setPostMode('assignment')} />
+                    Assignment
+                  </label>
+                  <label style={styles.radioLabel}>
+                    <input type="radio" checked={postMode === 'announcement'} onChange={() => setPostMode('announcement')} />
+                    Announcement (Stream Notification)
+                  </label>
+                </div>
 
-                <label style={{...styles.saveLabel, marginTop: '1rem'}}>Points (optional):</label>
-                <input
-                  type="number"
-                  value={postPoints}
-                  onChange={(e) => setPostPoints(e.target.value)}
-                  style={styles.input}
-                  placeholder="e.g., 100"
-                  min="0"
-                />
+                {postMode === 'assignment' && (
+                  <>
+                    <label style={{...styles.saveLabel, marginTop: '1rem'}}>Assignment Title:</label>
+                    <input
+                      type="text"
+                      value={postTitle}
+                      onChange={(e) => setPostTitle(e.target.value)}
+                      style={styles.input}
+                      placeholder="Enter assignment title"
+                    />
 
-                <label style={{...styles.saveLabel, marginTop: '1rem'}}>Due Date (optional):</label>
-                <input
-                  type="date"
-                  value={postDueDate}
-                  onChange={(e) => setPostDueDate(e.target.value)}
-                  style={styles.input}
-                />
+                    <label style={{...styles.saveLabel, marginTop: '1rem'}}>Points (optional):</label>
+                    <input
+                      type="number"
+                      value={postPoints}
+                      onChange={(e) => setPostPoints(e.target.value)}
+                      style={styles.input}
+                      placeholder="e.g., 100"
+                      min="0"
+                    />
 
-                <label style={styles.checkboxLabel}>
-                  <input
-                    type="checkbox"
-                    checked={postAsDraft}
-                    onChange={(e) => setPostAsDraft(e.target.checked)}
-                  />
-                  Save as draft (don't publish to students yet)
-                </label>
+                    <label style={{...styles.saveLabel, marginTop: '1rem'}}>Due Date (optional):</label>
+                    <input
+                      type="date"
+                      value={postDueDate}
+                      onChange={(e) => setPostDueDate(e.target.value)}
+                      style={styles.input}
+                    />
+
+                    <label style={styles.checkboxLabel}>
+                      <input
+                        type="checkbox"
+                        checked={postAsDraft}
+                        onChange={(e) => setPostAsDraft(e.target.checked)}
+                      />
+                      Save as draft (don&apos;t publish to students yet)
+                    </label>
+                  </>
+                )}
+
+                {postMode === 'announcement' && (
+                  <p style={{ ...styles.hintText, marginTop: '1rem' }}>
+                    This will post the generated text as a stream notification visible to all students. No title, points, or due date — just the message.
+                  </p>
+                )}
 
                 <div style={styles.saveModalActions}>
                   <button
@@ -1044,10 +1581,14 @@ export default function AgentPage() {
                   </button>
                   <button
                     onClick={postToClassroom}
-                    disabled={!postTitle || loading}
+                    disabled={(postMode === 'assignment' && !postTitle) || loading}
                     style={styles.postConfirmButton}
                   >
-                    {loading ? 'Posting...' : (postAsDraft ? 'Save Draft' : 'Post to Classroom')}
+                    {loading ? 'Posting...' : (
+                      postMode === 'announcement'
+                        ? 'Post Announcement'
+                        : (postAsDraft ? 'Save Draft' : 'Post Assignment')
+                    )}
                   </button>
                 </div>
               </div>
@@ -1098,10 +1639,17 @@ export default function AgentPage() {
 }
 
 const styles: { [key: string]: React.CSSProperties } = {
+  app: {
+    display: 'flex',
+    height: '100vh',
+    overflow: 'hidden',
+    backgroundColor: '#f0f2f5',
+  },
   main: {
+    flex: 1,
+    overflowY: 'auto',
     padding: '2rem',
     maxWidth: '1200px',
-    margin: '0 auto',
   },
   backButton: {
     background: 'none',
@@ -1658,5 +2206,72 @@ const styles: { [key: string]: React.CSSProperties } = {
     background: '#e8f0fe',
     padding: '2px 6px',
     borderRadius: '10px',
+  },
+  personalizationModeRow: {
+    display: 'flex',
+    gap: '1.25rem',
+    marginTop: '0.5rem',
+    marginBottom: '0.25rem',
+  },
+  radioLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontSize: '0.9rem',
+    cursor: 'pointer',
+  },
+  sharedBadge: {
+    fontSize: '0.6rem',
+    color: '#9334e6',
+    background: '#f3e8ff',
+    padding: '1px 5px',
+    borderRadius: '8px',
+    fontWeight: 600,
+    flexShrink: 0,
+  },
+  schedLabel: {
+    display: 'block',
+    fontSize: '0.85rem',
+    fontWeight: 500,
+    color: '#555',
+    marginBottom: '0.25rem',
+  },
+  checkPanel: {
+    marginTop: '1rem',
+    border: '1px solid #e0e0e0',
+    borderRadius: '8px',
+    overflow: 'hidden',
+  },
+  checkHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '8px 14px',
+    backgroundColor: '#f5f5f5',
+    borderBottom: '1px solid #e0e0e0',
+    fontSize: '0.88rem',
+    fontWeight: 600,
+    color: '#444',
+  },
+  checkClose: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    fontSize: '1.2rem',
+    color: '#888',
+    lineHeight: 1,
+    padding: 0,
+  },
+  checkBody: {
+    padding: '12px 14px',
+    backgroundColor: '#fafafa',
+  },
+  checkPre: {
+    margin: 0,
+    whiteSpace: 'pre-wrap' as const,
+    fontFamily: 'inherit',
+    fontSize: '0.9rem',
+    lineHeight: '1.6',
+    color: '#333',
   },
 }

@@ -10,6 +10,7 @@ interface Assignment {
   description?: string
   state?: string
   dueDate?: { year: number; month: number; day: number }
+  maxPoints?: number
 }
 
 interface Submission {
@@ -22,12 +23,23 @@ interface Submission {
   assignedGrade?: number
 }
 
+interface RosterStudent {
+  id: number
+  classroom_user_id: string | null
+  name: string
+}
+
 interface AssignmentListProps {
   assignments: Assignment[]
   courseId: string
+  students?: RosterStudent[]
+  onGrade?: (assignment: Assignment) => void
 }
 
-export default function AssignmentList({ assignments, courseId }: AssignmentListProps) {
+export default function AssignmentList({ assignments, courseId, students = [], onGrade }: AssignmentListProps) {
+  const studentByUserId = Object.fromEntries(
+    students.filter(s => s.classroom_user_id).map(s => [s.classroom_user_id!, s.name])
+  )
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [loadingSubmissions, setLoadingSubmissions] = useState(false)
@@ -113,9 +125,19 @@ export default function AssignmentList({ assignments, courseId }: AssignmentList
         >
           <div style={styles.header}>
             <h4 style={styles.title}>{assignment.title}</h4>
-            {assignment.state && (
-              <span style={styles.state}>{assignment.state}</span>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              {assignment.state && (
+                <span style={styles.state}>{assignment.state}</span>
+              )}
+              {onGrade && (
+                <button
+                  onClick={e => { e.stopPropagation(); onGrade(assignment) }}
+                  style={styles.gradeBtn}
+                >
+                  Grade with AI
+                </button>
+              )}
+            </div>
           </div>
           {assignment.description && (
             <p style={styles.description}>{assignment.description}</p>
@@ -140,7 +162,9 @@ export default function AssignmentList({ assignments, courseId }: AssignmentList
                 <div style={styles.submissionsList}>
                   {submissions.map((sub) => (
                     <div key={sub.id} style={styles.submissionRow}>
-                      <span style={styles.studentId}>Student ({sub.userId.slice(-6)})</span>
+                      <span style={styles.studentId}>
+                        {studentByUserId[sub.userId] || `Student (${sub.userId.slice(-6)})`}
+                      </span>
                       <span style={{
                         ...styles.submissionState,
                         backgroundColor: getStateColor(sub.state).bg,
@@ -285,5 +309,14 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#666',
     fontStyle: 'italic',
     fontSize: '0.9rem',
+  },
+  gradeBtn: {
+    padding: '4px 10px',
+    fontSize: '0.8rem',
+    background: '#e8f0fe',
+    color: '#1a73e8',
+    border: '1px solid #1a73e8',
+    borderRadius: '4px',
+    cursor: 'pointer',
   },
 }

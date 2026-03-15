@@ -11,3 +11,6 @@ python-multipart==0.0.6
 chromadb==0.4.22
 anthropic==0.18.1
 pypdf==4.0.1
+beautifulsoup4==4.12.3
+openai>=1.12.0
+python-docx>=1.1.0

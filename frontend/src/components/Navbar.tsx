@@ -19,14 +19,23 @@ export default function Navbar({ userName }: NavbarProps) {
       <div style={styles.left}>
         <span style={styles.brand}>Teacher Agent</span>
         <button onClick={() => router.push('/dashboard')} style={styles.navLink}>
+          Dashboard
+        </button>
+        <button onClick={() => router.push('/classes')} style={styles.navLink}>
           Classes
         </button>
         <button onClick={() => router.push('/agent')} style={styles.navLink}>
           AI Assistant
         </button>
+        <button onClick={() => router.push('/chat')} style={styles.navLink}>
+          Chat
+        </button>
       </div>
       <div style={styles.right}>
         {userName && <span style={styles.userName}>{userName}</span>}
+        <button onClick={() => router.push('/settings')} style={styles.navLink}>
+          Settings
+        </button>
         <button onClick={handleLogout} style={styles.logoutButton}>
           Logout
         </button>

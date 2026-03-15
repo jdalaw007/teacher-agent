@@ -1,0 +1,40 @@
+{
+  "defaultMode": "acceptEdits",
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "Bash(curl *)",
+      "Bash(sleep *)",
+      "Bash(touch *)",
+      "Bash(tail *)",
+      "Bash(chmod *)",
+      "Bash(netstat *)",
+      "Bash(find * -name \"*.pyc\" -delete*)",
+      "Bash(find * -name \"__pycache__\"*)",
+      "Bash(npm run *)",
+      "Bash(npm install*)",
+      "Bash(npx tsc*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(venv/Scripts/python.exe -c *)",
+      "Bash(venv/Scripts/python.exe -m uvicorn*)",
+      "Bash(venv/Scripts/python.exe -m pip*)",
+      "Bash(venv/Scripts/pip*)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git reset --hard*)",
+      "Bash(git checkout -- *)",
+      "Bash(rm -rf *)",
+      "Bash(DROP TABLE*)",
+      "Bash(DELETE FROM*)"
+    ]
+  }
+}

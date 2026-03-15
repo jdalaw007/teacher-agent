@@ -56,6 +56,14 @@ class DriveService:
         """Download a regular file's content."""
         return self.service.files().get_media(fileId=file_id).execute()
 
+    def search_files(self, query: str, page_size: int = 10) -> list:
+        result = self.service.files().list(
+            q=query,
+            pageSize=page_size,
+            fields="files(id, name, mimeType, modifiedTime, webViewLink)",
+        ).execute()
+        return result.get("files", [])
+
     def list_docs_and_text_files(self, page_size: int = 50) -> list:
         """List only Google Docs and text-based files."""
         query = (

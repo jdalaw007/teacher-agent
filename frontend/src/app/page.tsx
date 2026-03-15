@@ -17,6 +17,9 @@ export default function Home() {
         <button onClick={handleLogin} style={styles.button}>
           Sign in with Google
         </button>
+        <p style={styles.hint}>
+          Use your school or work Google account to access Google Classroom data.
+        </p>
       </div>
     </main>
   )
@@ -55,5 +58,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '1rem',
     borderRadius: '6px',
     cursor: 'pointer',
+  },
+  hint: {
+    fontSize: '0.82rem',
+    color: '#999',
+    marginTop: '14px',
+    marginBottom: 0,
   },
 }
