@@ -1,6 +1,6 @@
 # Teacher Agent
 
-An AI-powered teaching assistant that connects to Google Classroom, Gmail, Drive, and Calendar. Teachers can chat with an AI agent that knows their classes, students, and assignments — and can take actions like posting assignments and announcements directly from the chat.
+An AI-powered teaching assistant that connects to Google Classroom, Gmail, Drive, and Calendar. Teachers can chat with an AI agent that knows their classes, students, and assignments — and can take actions like posting assignments and announcements and managing email directly from the chat.
 
 ## Features
 
