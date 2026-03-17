@@ -34,9 +34,10 @@ interface AssignmentListProps {
   courseId: string
   students?: RosterStudent[]
   onGrade?: (assignment: Assignment) => void
+  onGradeStudent?: (assignment: Assignment, userId: string, userName: string) => void
 }
 
-export default function AssignmentList({ assignments, courseId, students = [], onGrade }: AssignmentListProps) {
+export default function AssignmentList({ assignments, courseId, students = [], onGrade, onGradeStudent }: AssignmentListProps) {
   const studentByUserId = Object.fromEntries(
     students.filter(s => s.classroom_user_id).map(s => [s.classroom_user_id!, s.name])
   )
@@ -225,6 +226,19 @@ export default function AssignmentList({ assignments, courseId, students = [], o
                             {previewUserId === sub.userId ? 'hide' : 'view work'}
                           </span>
                         )}
+                        {onGradeStudent && (sub.state === 'TURNED_IN' || sub.state === 'RETURNED') && (
+                          <button
+                            style={styles.gradeStudentBtn}
+                            onClick={e => {
+                              e.stopPropagation()
+                              const assignment = assignments.find(a => a.id === expandedId)!
+                              const name = studentByUserId[sub.userId] || `Student (${sub.userId.slice(-6)})`
+                              onGradeStudent(assignment, sub.userId, name)
+                            }}
+                          >
+                            Grade
+                          </button>
+                        )}
                       </div>
                       {previewUserId === sub.userId && (
                         <div style={styles.previewBox}>
@@ -382,5 +396,15 @@ const styles: { [key: string]: React.CSSProperties } = {
     border: '1px solid #1a73e8',
     borderRadius: '4px',
     cursor: 'pointer',
+  },
+  gradeStudentBtn: {
+    padding: '2px 8px',
+    fontSize: '0.75rem',
+    background: '#1a73e8',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    flexShrink: 0,
   },
 }

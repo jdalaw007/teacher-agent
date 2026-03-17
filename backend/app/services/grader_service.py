@@ -112,7 +112,7 @@ Student submission:
 Respond with JSON only: {{"ai_score": int, "ai_reasoning": str, "grade": int, "feedback": str}}"""
 
 
-async def grade_assignment_stream(token: str, user_id: str, course_id: str, assignment_id: str, rubric: str, max_points: int):
+async def grade_assignment_stream(token: str, user_id: str, course_id: str, assignment_id: str, rubric: str, max_points: int, student_user_id: str | None = None):
     """Async generator yielding SSE events for the grading pipeline."""
 
     def sse(data: dict) -> str:
@@ -155,6 +155,8 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                 rubric = f"Content accuracy and completeness ({max_points} pts)"
 
         submissions = classroom.list_submissions(course_id, assignment_id)
+        if student_user_id:
+            submissions = [s for s in submissions if s.get("userId") == student_user_id]
 
         yield sse({"type": "status", "message": f"Found {len(submissions)} submission(s). Fetching roster..."})
 

@@ -82,6 +82,7 @@ export default function ClassPage() {
   const [graderStatus, setGraderStatus] = useState('')
   const [graderResults, setGraderResults] = useState<any[]>([])
   const [graderPlagiarism, setGraderPlagiarism] = useState<any[]>([])
+  const [graderStudentFilter, setGraderStudentFilter] = useState<{ userId: string; name: string } | null>(null)
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -364,6 +365,7 @@ export default function ClassPage() {
           assignment_id: graderAssignment.id,
           rubric: graderRubric,
           max_points: graderMaxPoints,
+          student_user_id: graderStudentFilter?.userId || '',
         }),
       })
       if (!res.ok || !res.body) {
@@ -554,6 +556,17 @@ export default function ClassPage() {
           students={students}
           onGrade={(assignment) => {
             setGraderAssignment(assignment)
+            setGraderStudentFilter(null)
+            setGraderRubric('')
+            setGraderMaxPoints(assignment.maxPoints || 100)
+            setGraderResults([])
+            setGraderPlagiarism([])
+            setGraderRunning(false)
+            setGraderStatus('')
+          }}
+          onGradeStudent={(assignment, userId, userName) => {
+            setGraderAssignment(assignment)
+            setGraderStudentFilter({ userId, name: userName })
             setGraderRubric('')
             setGraderMaxPoints(assignment.maxPoints || 100)
             setGraderResults([])
@@ -567,8 +580,11 @@ export default function ClassPage() {
           <div style={styles.modalOverlay} onClick={() => setGraderAssignment(null)}>
             <div style={styles.graderModal} onClick={e => e.stopPropagation()}>
               <div style={styles.mailModalHeader}>
-                <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Grade with AI — {graderAssignment.title}</h2>
-                <button onClick={() => setGraderAssignment(null)} style={styles.closeBtn}>×</button>
+                <h2 style={{ margin: 0, fontSize: '1.1rem' }}>
+                  Grade with AI — {graderAssignment.title}
+                  {graderStudentFilter && <span style={{ fontWeight: 400, color: '#888', fontSize: '0.9rem' }}> · {graderStudentFilter.name}</span>}
+                </h2>
+                <button onClick={() => { setGraderAssignment(null); setGraderStudentFilter(null) }} style={styles.closeBtn}>×</button>
               </div>
               <div style={styles.mailModalBody}>
                 {graderResults.length === 0 ? (

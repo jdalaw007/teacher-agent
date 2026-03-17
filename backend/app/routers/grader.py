@@ -13,6 +13,7 @@ class GradeRequest(BaseModel):
     assignment_id: str
     rubric: str = ""
     max_points: int = 100
+    student_user_id: str = ""
 
 
 @router.get("/history")
@@ -68,7 +69,8 @@ async def grade_assignment(body: GradeRequest, request: Request):
     user_id = get_user_id_from_token(token)
     return StreamingResponse(
         grader_service.grade_assignment_stream(
-            token, user_id, body.course_id, body.assignment_id, body.rubric, body.max_points
+            token, user_id, body.course_id, body.assignment_id, body.rubric, body.max_points,
+            body.student_user_id or None
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
