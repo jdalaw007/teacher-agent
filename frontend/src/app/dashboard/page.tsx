@@ -91,6 +91,10 @@ export default function Dashboard() {
   const [emailsError, setEmailsError] = useState(false)
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [courses, setCourses] = useState<Course[]>([])
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [feedbackText, setFeedbackText] = useState('')
+  const [feedbackSent, setFeedbackSent] = useState(false)
+  const [feedbackSending, setFeedbackSending] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -372,6 +376,64 @@ export default function Dashboard() {
             <p style={styles.cardHint}>Google Calendar — coming soon</p>
           </div>
 
+          {/* Suggestion Box */}
+          <div style={styles.card}>
+            <div style={styles.cardHead}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              <span style={styles.cardLabel}>SUGGESTION BOX</span>
+            </div>
+            {feedbackSent ? (
+              <p style={{ ...styles.cardHint, color: '#34a853' }}>Thanks for your feedback!</p>
+            ) : feedbackOpen ? (
+              <div>
+                <textarea
+                  autoFocus
+                  value={feedbackText}
+                  onChange={e => setFeedbackText(e.target.value)}
+                  placeholder="Share a suggestion or report an issue..."
+                  style={styles.feedbackTextarea}
+                  rows={3}
+                />
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                  <button
+                    style={{ ...styles.reloginBtn, opacity: feedbackSending || !feedbackText.trim() ? 0.5 : 1 }}
+                    disabled={feedbackSending || !feedbackText.trim()}
+                    onClick={async () => {
+                      if (!token || !feedbackText.trim()) return
+                      setFeedbackSending(true)
+                      try {
+                        await fetch(`${API_URL}/feedback/submit`, {
+                          method: 'POST',
+                          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ message: feedbackText.trim() }),
+                        })
+                        setFeedbackSent(true)
+                        setFeedbackOpen(false)
+                        setFeedbackText('')
+                      } finally {
+                        setFeedbackSending(false)
+                      }
+                    }}
+                  >
+                    {feedbackSending ? 'Sending...' : 'Send'}
+                  </button>
+                  <button
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', color: '#aaa' }}
+                    onClick={() => { setFeedbackOpen(false); setFeedbackText('') }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button style={styles.reloginBtn} onClick={() => setFeedbackOpen(true)}>
+                Leave a suggestion
+              </button>
+            )}
+          </div>
+
           {/* Google Classroom */}
           <div style={styles.card}>
             <div style={styles.cardHead}>
@@ -636,6 +698,12 @@ const styles: { [key: string]: React.CSSProperties } = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap' as const,
     marginTop: '2px',
+  },
+  feedbackTextarea: {
+    width: '100%', padding: '8px 10px', fontSize: '0.83rem',
+    border: '1px solid #e0e0e0', borderRadius: '8px', resize: 'none' as const,
+    fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const,
+    backgroundColor: '#f8f9fa',
   },
   reloginBtn: {
     marginTop: '6px',
