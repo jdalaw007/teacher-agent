@@ -644,7 +644,7 @@ class ChatAgentService:
             print(f"[ChatAgent] Tool error ({tool_name}): {e}", file=sys.stderr)
             return json.dumps({"error": str(e)})
 
-    async def stream_response(self, conversation_id: str, user_message: str):
+    async def stream_response(self, conversation_id: str, user_message: str, page_context: str = ""):
         """Async generator that yields SSE chunks."""
         if not self.client:
             yield f"data: {json.dumps({'type': 'error', 'content': 'OpenAI API key not configured.'})}\n\n"
@@ -662,6 +662,9 @@ class ChatAgentService:
 
         if context:
             messages.append({"role": "system", "content": context})
+
+        if page_context:
+            messages.append({"role": "system", "content": f"The teacher is currently viewing: {page_context}"})
 
         # Add conversation history (skip system messages, limit to last 20)
         for msg in history[-20:]:

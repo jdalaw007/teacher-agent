@@ -30,6 +30,7 @@ class CreateConversationRequest(BaseModel):
 
 class SendMessageRequest(BaseModel):
     message: str
+    page_context: str = ""
 
 
 class FeedbackRequest(BaseModel):
@@ -91,7 +92,7 @@ async def send_message(conversation_id: str, request: Request, body: SendMessage
     agent = ChatAgentService(user_id, token)
 
     return StreamingResponse(
-        agent.stream_response(conversation_id, body.message),
+        agent.stream_response(conversation_id, body.message, body.page_context),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

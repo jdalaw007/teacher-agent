@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import type { Metadata } from 'next'
 import './globals.css'
+import FloatingAgent from '@/components/FloatingAgent'
 
 export const metadata: Metadata = {
   title: 'Teacher Agent',
@@ -15,7 +16,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <FloatingAgent />
+      </body>
     </html>
   )
 }
