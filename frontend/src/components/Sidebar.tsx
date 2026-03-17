@@ -8,14 +8,14 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 export default function Sidebar() {
   const router = useRouter()
   const pathname = usePathname() || ''
-  const [avatar, setAvatar] = useState<{ picture?: string; name?: string } | null>(null)
+  const [avatar, setAvatar] = useState<{ picture?: string; name?: string; email?: string } | null>(null)
 
   useEffect(() => {
     const token = localStorage.getItem('token')
     if (!token) return
     fetch(`${API_URL}/auth/user`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setAvatar({ picture: d.picture, name: d.name }) })
+      .then(d => { if (d) setAvatar({ picture: d.picture, name: d.name, email: d.email }) })
       .catch(() => {})
   }, [])
 
@@ -68,6 +68,20 @@ export default function Sidebar() {
       </nav>
 
       <div style={s.foot}>
+        {avatar?.email === 'smith@plaminkova.cz' && (
+          <button
+            onClick={() => router.push('/admin')}
+            style={{ ...s.btn, ...(pathname === '/admin' ? s.btnActive : {}) }}
+            title="Admin"
+          >
+            <span style={{ color: pathname === '/admin' ? '#fff' : '#9aa0a6' }}>
+              <ShieldIcon />
+            </span>
+            <span style={{ ...s.lbl, color: pathname === '/admin' ? '#fff' : '#9aa0a6' }}>
+              Admin
+            </span>
+          </button>
+        )}
         <button
           onClick={() => router.push('/settings')}
           style={{ ...s.btn, ...(pathname === '/settings' ? s.btnActive : {}) }}
@@ -143,6 +157,14 @@ function PersonIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
       <circle cx="12" cy="7" r="4"/>
+    </svg>
+  )
+}
+
+function ShieldIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
     </svg>
   )
 }
