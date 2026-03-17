@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -25,6 +25,7 @@ const TOOL_LABELS: Record<string, string> = {
   post_announcement: 'Posting announcement...',
   search_memories: 'Searching memories...',
   log_strategy: 'Logging strategy...',
+  set_language: 'Changing language...',
 }
 
 const PAGE_LABELS: Record<string, string> = {
@@ -37,6 +38,14 @@ const PAGE_LABELS: Record<string, string> = {
   '/admin': 'Admin',
   '/onboarding': 'Onboarding',
   '/agent': 'Assignment Generator',
+}
+
+const LANG_CODES: Record<string, string> = {
+  English: 'en-US',
+  Czech: 'cs-CZ',
+  Russian: 'ru-RU',
+  Spanish: 'es-ES',
+  French: 'fr-FR',
 }
 
 function getPageLabel(pathname: string): string {
@@ -69,11 +78,28 @@ export default function FloatingAgent() {
   const [streamingContent, setStreamingContent] = useState('')
   const [toolStatuses, setToolStatuses] = useState<ToolStatus[]>([])
   const [convId, setConvId] = useState<string | null>(null)
+  const [listening, setListening] = useState(false)
+  const [ttsEnabled, setTtsEnabled] = useState(false)
+  const [langCode, setLangCode] = useState('en-US')
+  const [voiceSupported, setVoiceSupported] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const recognitionRef = useRef<any>(null)
 
   useEffect(() => {
     setHasToken(!!localStorage.getItem('token'))
+    setTtsEnabled(localStorage.getItem('agent_tts') === 'true')
+    // Check voice support
+    const hasSTT = !!(window.SpeechRecognition || (window as any).webkitSpeechRecognition)
+    setVoiceSupported(hasSTT)
+    // Fetch language preference
+    const token = localStorage.getItem('token')
+    if (token) {
+      fetch(`${API_URL}/onboarding/profile`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(d => { if (d.language && LANG_CODES[d.language]) setLangCode(LANG_CODES[d.language]) })
+        .catch(() => {})
+    }
   }, [])
 
   useEffect(() => {
@@ -84,7 +110,82 @@ export default function FloatingAgent() {
     if (open) inputRef.current?.focus()
   }, [open])
 
-  // Hide on login page and dashboard (dashboard has the full agent already)
+  const speak = useCallback((text: string) => {
+    if (!ttsEnabled || !window.speechSynthesis) return
+    window.speechSynthesis.cancel()
+    // Strip markdown
+    const clean = text.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1')
+    const utt = new SpeechSynthesisUtterance(clean)
+    utt.lang = langCode
+    utt.rate = 1.0
+    window.speechSynthesis.speak(utt)
+  }, [ttsEnabled, langCode])
+
+  const stopListening = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+      recognitionRef.current = null
+    }
+    setListening(false)
+  }, [])
+
+  const startListening = useCallback(() => {
+    const SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) return
+    const recognition = new SpeechRecognition()
+    recognition.lang = langCode
+    recognition.continuous = false
+    recognition.interimResults = true
+    recognitionRef.current = recognition
+
+    recognition.onstart = () => setListening(true)
+
+    recognition.onresult = (e: any) => {
+      const transcript = Array.from(e.results as any[])
+        .map((r: any) => r[0].transcript)
+        .join('')
+      setInput(transcript)
+    }
+
+    recognition.onend = () => {
+      setListening(false)
+      recognitionRef.current = null
+      // Auto-send if we captured something
+      setInput(prev => {
+        if (prev.trim()) {
+          setTimeout(() => {
+            const sendBtn = document.getElementById('agent-send-btn')
+            sendBtn?.click()
+          }, 100)
+        }
+        return prev
+      })
+    }
+
+    recognition.onerror = () => {
+      setListening(false)
+      recognitionRef.current = null
+    }
+
+    recognition.start()
+  }, [langCode])
+
+  const toggleListening = () => {
+    if (listening) {
+      stopListening()
+    } else {
+      startListening()
+    }
+  }
+
+  const toggleTts = () => {
+    const next = !ttsEnabled
+    setTtsEnabled(next)
+    localStorage.setItem('agent_tts', String(next))
+    if (!next) window.speechSynthesis?.cancel()
+  }
+
+  // Hide on login page and dashboard
   const hide = pathname === '/' || pathname === '/dashboard' || !hasToken
   if (hide) return null
 
@@ -94,6 +195,7 @@ export default function FloatingAgent() {
     const msg = (text ?? input).trim()
     if (!msg || streaming) return
     setInput('')
+    stopListening()
     setMessages(prev => [...prev, { role: 'user', content: msg }])
     setStreaming(true)
     setStreamingContent('')
@@ -144,7 +246,10 @@ export default function FloatingAgent() {
         }
       }
 
-      if (full) setMessages(prev => [...prev, { role: 'assistant', content: full }])
+      if (full) {
+        setMessages(prev => [...prev, { role: 'assistant', content: full }])
+        speak(full)
+      }
       setStreamingContent('')
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Something went wrong. Please try again.' }])
@@ -164,6 +269,7 @@ export default function FloatingAgent() {
     setConvId(null)
     setStreamingContent('')
     setToolStatuses([])
+    window.speechSynthesis?.cancel()
   }
 
   return (
@@ -188,6 +294,14 @@ export default function FloatingAgent() {
               <span style={s.pageTag}>{pageLabel}</span>
             </div>
             <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+              {/* TTS toggle */}
+              <button
+                onClick={toggleTts}
+                style={{ ...s.headerBtn, color: ttsEnabled ? '#1a73e8' : '#ccc' }}
+                title={ttsEnabled ? 'Mute agent voice' : 'Enable agent voice'}
+              >
+                <SpeakerIcon active={ttsEnabled} />
+              </button>
               {messages.length > 0 && (
                 <button onClick={clearChat} style={s.headerBtn} title="New conversation">
                   <NewIcon />
@@ -203,7 +317,9 @@ export default function FloatingAgent() {
           <div style={s.messages}>
             {messages.length === 0 && !streaming && (
               <div style={s.emptyState}>
-                Ask me anything about your students, classes, or content.
+                {voiceSupported
+                  ? 'Ask me anything — type or tap the mic to speak.'
+                  : 'Ask me anything about your students, classes, or content.'}
               </div>
             )}
 
@@ -238,17 +354,32 @@ export default function FloatingAgent() {
 
           {/* Input */}
           <div style={s.inputRow}>
+            {voiceSupported && (
+              <button
+                onClick={toggleListening}
+                disabled={streaming}
+                style={{
+                  ...s.micBtn,
+                  background: listening ? '#ea4335' : '#f1f3f4',
+                  boxShadow: listening ? '0 0 0 4px rgba(234,67,53,0.2)' : 'none',
+                }}
+                title={listening ? 'Stop listening' : 'Speak'}
+              >
+                <MicIcon active={listening} />
+              </button>
+            )}
             <textarea
               ref={inputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKey}
               rows={1}
-              placeholder="Ask your agent..."
-              style={s.textarea}
+              placeholder={listening ? 'Listening...' : 'Ask your agent...'}
+              style={{ ...s.textarea, borderColor: listening ? '#ea4335' : '#e0e0e0' }}
               disabled={streaming}
             />
             <button
+              id="agent-send-btn"
               onClick={() => send()}
               disabled={!input.trim() || streaming}
               style={{ ...s.sendBtn, opacity: (!input.trim() || streaming) ? 0.4 : 1 }}
@@ -299,6 +430,27 @@ function SendIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+    </svg>
+  )
+}
+
+function MicIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={active ? '#fff' : '#666'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="2" width="6" height="11" rx="3" />
+      <path d="M5 10a7 7 0 0 0 14 0" />
+      <line x1="12" y1="19" x2="12" y2="22" />
+      <line x1="8" y1="22" x2="16" y2="22" />
+    </svg>
+  )
+}
+
+function SpeakerIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={active ? '#1a73e8' : '#ccc'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      {active && <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />}
+      {active && <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />}
     </svg>
   )
 }
@@ -372,7 +524,6 @@ const s: { [k: string]: React.CSSProperties } = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    color: '#666',
   },
   messages: {
     flex: 1,
@@ -434,10 +585,22 @@ const s: { [k: string]: React.CSSProperties } = {
   inputRow: {
     display: 'flex',
     alignItems: 'flex-end',
-    gap: '8px',
+    gap: '6px',
     padding: '10px 12px',
     borderTop: '1px solid #f0f0f0',
     flexShrink: 0,
+  },
+  micBtn: {
+    width: '34px',
+    height: '34px',
+    borderRadius: '50%',
+    border: 'none',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    transition: 'background 0.15s, box-shadow 0.15s',
   },
   textarea: {
     flex: 1,
@@ -452,6 +615,7 @@ const s: { [k: string]: React.CSSProperties } = {
     backgroundColor: '#fafafa',
     maxHeight: '100px',
     overflowY: 'auto',
+    transition: 'border-color 0.15s',
   },
   sendBtn: {
     width: '34px',
