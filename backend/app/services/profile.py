@@ -50,7 +50,7 @@ class ProfileService:
 
             language = data.get("language", "")
 
-        if existing:
+            if existing:
                 db.execute("""
                     UPDATE user_profiles SET
                         display_name = ?,
