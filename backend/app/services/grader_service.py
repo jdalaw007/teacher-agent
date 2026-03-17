@@ -109,7 +109,7 @@ GRADE_PROMPT = """You are grading a student assignment. Do two things:
 Student submission:
 {text}
 
-Respond with JSON only: {{"ai_score": int, "ai_reasoning": str, "grade": int, "feedback": str}}"""
+{language_instruction}Respond with JSON only: {{"ai_score": int, "ai_reasoning": str, "grade": int, "feedback": str}}"""
 
 
 async def grade_assignment_stream(token: str, user_id: str, course_id: str, assignment_id: str, rubric: str, max_points: int, student_user_id: str | None = None):
@@ -120,6 +120,10 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
 
     try:
         client = _get_openai_client(user_id)
+
+        from app.services.profile import ProfileService
+        language = ProfileService(user_id).get_language()
+        language_instruction = f"Write the feedback in {language}. " if language and language != "English" else ""
 
         yield sse({"type": "status", "message": "Fetching submissions..."})
 
@@ -223,6 +227,7 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                     max_points=max_points,
                     rubric=rubric,
                     text=text[:6000],
+                    language_instruction=language_instruction,
                 )
                 response = client.chat.completions.create(
                     model="gpt-4o",

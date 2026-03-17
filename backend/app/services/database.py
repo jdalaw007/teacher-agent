@@ -225,6 +225,7 @@ def init_db():
     for migration in [
         "ALTER TABLE user_profiles ADD COLUMN last_login_at TEXT",
         "ALTER TABLE teacher_tokens ADD COLUMN access_token TEXT",
+        "ALTER TABLE user_profiles ADD COLUMN language TEXT DEFAULT 'English'",
     ]:
         try:
             conn.execute(migration)

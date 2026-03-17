@@ -24,6 +24,7 @@ class SaveProfileRequest(BaseModel):
     teaching_style: Optional[str] = ""
     about: Optional[str] = ""
     openai_api_key: Optional[str] = ""
+    language: Optional[str] = ""
 
 
 class TestKeyRequest(BaseModel):

@@ -11,6 +11,7 @@ import Sidebar from '@/components/Sidebar'
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 const ROLES = ['Teacher', 'Coach', 'Tutor', 'Trainer', 'Instructor', 'Advisor', 'Other']
+const LANGUAGES = ['English', 'Czech', 'Russian', 'Spanish', 'French']
 
 const GRADE_OPTIONS = [
   'Pre-K', 'Kindergarten', '1st', '2nd', '3rd', '4th', '5th',
@@ -27,6 +28,7 @@ interface FormData {
   teaching_style: string
   about: string
   openai_api_key: string
+  language: string
 }
 
 export default function SettingsPage() {
@@ -36,7 +38,7 @@ export default function SettingsPage() {
   const [token, setToken] = useState<string | null>(null)
   const [form, setForm] = useState<FormData>({
     display_name: '', school_org: '', role: 'Teacher',
-    subjects: [], grade_levels: [], teaching_style: '', about: '', openai_api_key: '',
+    subjects: [], grade_levels: [], teaching_style: '', about: '', openai_api_key: '', language: 'English',
   })
   const [subjectInput, setSubjectInput] = useState('')
   const [keyStatus, setKeyStatus] = useState<'idle' | 'testing' | 'valid' | 'invalid' | 'saved'>('idle')
@@ -67,6 +69,7 @@ export default function SettingsPage() {
             teaching_style: data.teaching_style || '',
             about: data.about || '',
             openai_api_key: '',
+            language: data.language || 'English',
           })
           setHasExistingKey(!!data.has_api_key)
         }
@@ -220,6 +223,21 @@ export default function SettingsPage() {
         </div>
 
         <div style={s.section}>
+          <h2 style={s.sectionTitle}>Language</h2>
+          <p style={{ fontSize: '0.88rem', color: '#666', marginBottom: '14px', lineHeight: '1.5' }}>
+            The agent will respond in your chosen language. You can also ask the agent to switch languages at any time.
+          </p>
+          <div style={s.langGrid}>
+            {LANGUAGES.map(lang => (
+              <button key={lang} onClick={() => update('language', lang)}
+                style={{ ...s.langBtn, ...(form.language === lang ? s.langBtnActive : {}) }}>
+                {lang}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={s.section}>
           <h2 style={s.sectionTitle}>API key</h2>
           <p style={{ fontSize: '0.88rem', color: '#666', marginBottom: '14px', lineHeight: '1.5' }}>
             Your OpenAI key is used to power the AI assistant. Leave blank to use the default.
@@ -282,6 +300,12 @@ const s: { [k: string]: React.CSSProperties } = {
     marginBottom: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
   },
   sectionTitle: { fontSize: '1.05rem', fontWeight: 'bold', color: '#333', margin: '0 0 16px' },
+  langGrid: { display: 'flex', flexWrap: 'wrap' as const, gap: '8px' },
+  langBtn: {
+    padding: '8px 20px', border: '1px solid #ddd', borderRadius: '20px',
+    background: 'white', cursor: 'pointer', fontSize: '0.9rem', color: '#555',
+  },
+  langBtnActive: { backgroundColor: '#1a73e8', color: 'white', borderColor: '#1a73e8', fontWeight: 600 },
   label: { display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#444', marginBottom: '6px', marginTop: '16px' },
   input: {
     width: '100%', padding: '10px 12px', border: '1px solid #ddd', borderRadius: '8px',

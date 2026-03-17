@@ -48,7 +48,9 @@ class ProfileService:
                 "SELECT id FROM user_profiles WHERE user_id = ?", (self.user_id,)
             ).fetchone()
 
-            if existing:
+            language = data.get("language", "")
+
+        if existing:
                 db.execute("""
                     UPDATE user_profiles SET
                         display_name = ?,
@@ -59,6 +61,7 @@ class ProfileService:
                         teaching_style = ?,
                         about = ?,
                         openai_api_key = CASE WHEN ? = '' THEN openai_api_key ELSE ? END,
+                        language = CASE WHEN ? = '' THEN language ELSE ? END,
                         onboarding_complete = 1,
                         updated_at = datetime('now')
                     WHERE user_id = ?
@@ -71,14 +74,15 @@ class ProfileService:
                     data.get("teaching_style", ""),
                     data.get("about", ""),
                     api_key, api_key,
+                    language, language,
                     self.user_id,
                 ))
             else:
                 db.execute("""
                     INSERT INTO user_profiles
                         (user_id, display_name, school_org, role, subjects,
-                         grade_levels, teaching_style, about, openai_api_key, onboarding_complete)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                         grade_levels, teaching_style, about, openai_api_key, language, onboarding_complete)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                 """, (
                     self.user_id,
                     data.get("display_name", ""),
@@ -89,12 +93,24 @@ class ProfileService:
                     data.get("teaching_style", ""),
                     data.get("about", ""),
                     api_key,
+                    language or "English",
                 ))
             db.commit()
         finally:
             db.close()
 
         return self.get_profile()
+
+    def get_language(self) -> str:
+        """Return the user's preferred language, default English."""
+        db = get_db()
+        try:
+            row = db.execute(
+                "SELECT language FROM user_profiles WHERE user_id = ?", (self.user_id,)
+            ).fetchone()
+            return (row["language"] if row and row["language"] else "English")
+        finally:
+            db.close()
 
     def is_onboarding_complete(self) -> bool:
         db = get_db()

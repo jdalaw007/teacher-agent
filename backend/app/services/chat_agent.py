@@ -306,6 +306,20 @@ TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_language",
+            "description": "Change the teacher's preferred language for the agent's responses. Use this when the teacher asks to switch languages.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "language": {"type": "string", "description": "Language name, e.g. English, Czech, Russian, Spanish, French"},
+                },
+                "required": ["language"],
+            },
+        },
+    },
 ]
 
 
@@ -326,12 +340,16 @@ class ChatAgentService:
         """Auto-gather context for the conversation."""
         parts = []
 
-        # 0. Teacher profile
+        # 0. Teacher profile + language
         try:
             from app.services.profile import ProfileService
-            profile_block = ProfileService(self.teacher_user_id).get_context_block()
+            ps = ProfileService(self.teacher_user_id)
+            profile_block = ps.get_context_block()
             if profile_block:
                 parts.append(profile_block)
+            lang = ps.get_language()
+            if lang and lang != "English":
+                parts.append(f"## Language\nAlways respond in {lang}. Do not switch to English unless explicitly asked.")
         except Exception as e:
             print(f"[ChatAgent] Failed to load profile: {e}", file=sys.stderr)
 
@@ -636,6 +654,12 @@ class ChatAgentService:
                 cal = CalendarService(self.access_token)
                 events = cal.list_upcoming_events(max_results=max_results, days_ahead=days_ahead)
                 return json.dumps(events, default=str)
+
+            elif tool_name == "set_language":
+                lang = arguments.get("language", "English")
+                from app.services.profile import ProfileService
+                ProfileService(self.teacher_user_id).save_profile({"language": lang})
+                return json.dumps({"success": True, "language": lang})
 
             else:
                 return json.dumps({"error": f"Unknown tool: {tool_name}"})
