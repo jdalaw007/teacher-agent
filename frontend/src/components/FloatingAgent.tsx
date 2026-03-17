@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -16,6 +16,7 @@ interface ToolStatus {
 }
 
 const TOOL_LABELS: Record<string, string> = {
+  navigate: 'Navigating...',
   search_corpus: 'Searching documents...',
   get_student_data: 'Looking up students...',
   get_class_assignments: 'Fetching assignments...',
@@ -59,6 +60,7 @@ function renderContent(text: string) {
 
 export default function FloatingAgent() {
   const pathname = usePathname() || ''
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [hasToken, setHasToken] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
@@ -135,6 +137,7 @@ export default function FloatingAgent() {
           try {
             const d = JSON.parse(line.slice(6))
             if (d.type === 'content') { full += d.content; setStreamingContent(full) }
+            else if (d.type === 'navigate') { router.push(d.path) }
             else if (d.type === 'tool_call') setToolStatuses(p => [...p, { name: d.name, status: 'calling' }])
             else if (d.type === 'tool_result') setToolStatuses(p => p.map(t => t.name === d.name ? { ...t, status: 'done' } : t))
           } catch { /* ignore */ }

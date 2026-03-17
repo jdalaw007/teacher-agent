@@ -309,6 +309,24 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "navigate",
+            "description": "Navigate the teacher to a different page in the app. Use when the teacher asks to go somewhere, open a page, or switch to a section.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "page": {
+                        "type": "string",
+                        "description": "Page to navigate to",
+                        "enum": ["dashboard", "classes", "files", "inbox", "calendar", "settings", "admin"],
+                    },
+                },
+                "required": ["page"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "set_language",
             "description": "Change the teacher's preferred language for the agent's responses. Use this when the teacher asks to switch languages.",
             "parameters": {
@@ -655,6 +673,14 @@ class ChatAgentService:
                 events = cal.list_upcoming_events(max_results=max_results, days_ahead=days_ahead)
                 return json.dumps(events, default=str)
 
+            elif tool_name == "navigate":
+                page = arguments.get("page", "dashboard")
+                paths = {
+                    "dashboard": "/dashboard", "classes": "/classes", "files": "/files",
+                    "inbox": "/inbox", "calendar": "/calendar", "settings": "/settings", "admin": "/admin",
+                }
+                return json.dumps({"__navigate__": paths.get(page, "/dashboard"), "page": page})
+
             elif tool_name == "set_language":
                 lang = arguments.get("language", "English")
                 from app.services.profile import ProfileService
@@ -810,6 +836,14 @@ class ChatAgentService:
                     result = self._execute_tool(tool_name, args)
 
                     yield f"data: {json.dumps({'type': 'tool_result', 'name': tool_name, 'result': result[:500]})}\n\n"
+
+                    # Emit navigate event if tool returned a navigation instruction
+                    try:
+                        result_data = json.loads(result)
+                        if "__navigate__" in result_data:
+                            yield f"data: {json.dumps({'type': 'navigate', 'path': result_data['__navigate__']})}\n\n"
+                    except Exception:
+                        pass
 
                     # Save tool result message
                     memory.add_message(conversation_id, "tool", result, tool_call_id=tc_data["id"])
