@@ -386,6 +386,7 @@ export default function ClassPage() {
             const event = JSON.parse(line.slice(6))
             if (event.type === 'status') setGraderStatus(event.message)
             else if (event.type === 'plagiarism') setGraderPlagiarism(event.flags)
+            else if (event.type === 'rubric_generated') setGraderRubric(event.rubric)
             else if (event.type === 'student_result') setGraderResults(prev => [...prev, event])
             else if (event.type === 'done') setGraderRunning(false)
             else if (event.type === 'error') { setGraderStatus(`Error: ${event.message}`); setGraderRunning(false) }
@@ -573,13 +574,13 @@ export default function ClassPage() {
                 {graderResults.length === 0 ? (
                   <>
                     <div style={styles.mailSection}>
-                      <label style={styles.mailLabel}>Rubric</label>
+                      <label style={styles.mailLabel}>Rubric <span style={{ fontWeight: 400, color: '#888', fontSize: '0.8rem' }}>(optional — AI will generate one if left blank)</span></label>
                       <textarea
                         value={graderRubric}
                         onChange={e => setGraderRubric(e.target.value)}
                         rows={5}
                         style={styles.mailTextarea}
-                        placeholder="Accuracy 40pts, Clarity 30pts, Completeness 30pts"
+                        placeholder="Leave blank to auto-generate, or enter: Accuracy 40pts, Clarity 30pts, Completeness 30pts"
                       />
                     </div>
                     <div style={styles.mailSection}>
@@ -595,7 +596,7 @@ export default function ClassPage() {
                     {graderStatus && <p style={{ color: '#666', fontSize: '0.9rem', margin: 0 }}>{graderStatus}</p>}
                     <button
                       onClick={handleGradeStart}
-                      disabled={graderRunning || !graderRubric}
+                      disabled={graderRunning}
                       style={styles.button}
                     >
                       {graderRunning ? 'Grading...' : 'Start Grading'}

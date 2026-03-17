@@ -44,6 +44,28 @@ export default function AssignmentList({ assignments, courseId, students = [], o
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [loadingSubmissions, setLoadingSubmissions] = useState(false)
   const [submissionsError, setSubmissionsError] = useState<string | null>(null)
+  const [previewUserId, setPreviewUserId] = useState<string | null>(null)
+  const [previewText, setPreviewText] = useState<string | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+
+  const openPreview = async (sub: Submission, assignmentId: string) => {
+    setPreviewUserId(sub.userId)
+    setPreviewText(null)
+    setPreviewLoading(true)
+    const token = localStorage.getItem('token')
+    try {
+      const res = await fetch(
+        `${API_URL}/grader/submission-preview?course_id=${courseId}&assignment_id=${assignmentId}&student_user_id=${sub.userId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      const d = await res.json()
+      setPreviewText(d.text || '(No readable text found — may be a PDF or image)')
+    } catch {
+      setPreviewText('(Failed to load submission)')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
 
   if (assignments.length === 0) {
     return (
@@ -161,26 +183,56 @@ export default function AssignmentList({ assignments, courseId, students = [], o
               ) : (
                 <div style={styles.submissionsList}>
                   {submissions.map((sub) => (
-                    <div key={sub.id} style={styles.submissionRow}>
-                      <span style={styles.studentId}>
-                        {studentByUserId[sub.userId] || `Student (${sub.userId.slice(-6)})`}
-                      </span>
-                      <span style={{
-                        ...styles.submissionState,
-                        backgroundColor: getStateColor(sub.state).bg,
-                        color: getStateColor(sub.state).text,
-                      }}>
-                        {formatState(sub.state)}
-                      </span>
-                      {sub.late && <span style={styles.lateBadge}>Late</span>}
-                      {sub.assignedGrade != null && (
-                        <span style={styles.grade}>Grade: {sub.assignedGrade}</span>
-                      )}
-                      {sub.updateTime && (
-                        <span style={styles.submissionTime}>
-                          {new Date(sub.updateTime).toLocaleDateString()}{' '}
-                          {new Date(sub.updateTime).toLocaleTimeString()}
+                    <div key={sub.id}>
+                      <div
+                        style={{
+                          ...styles.submissionRow,
+                          cursor: sub.state === 'TURNED_IN' || sub.state === 'RETURNED' ? 'pointer' : 'default',
+                          backgroundColor: previewUserId === sub.userId ? '#e8f0fe' : '#f8f9fa',
+                        }}
+                        onClick={() => {
+                          if (sub.state === 'TURNED_IN' || sub.state === 'RETURNED') {
+                            if (previewUserId === sub.userId) {
+                              setPreviewUserId(null); setPreviewText(null)
+                            } else {
+                              openPreview(sub, expandedId!)
+                            }
+                          }
+                        }}
+                      >
+                        <span style={styles.studentId}>
+                          {studentByUserId[sub.userId] || `Student (${sub.userId.slice(-6)})`}
                         </span>
+                        <span style={{
+                          ...styles.submissionState,
+                          backgroundColor: getStateColor(sub.state).bg,
+                          color: getStateColor(sub.state).text,
+                        }}>
+                          {formatState(sub.state)}
+                        </span>
+                        {sub.late && <span style={styles.lateBadge}>Late</span>}
+                        {sub.assignedGrade != null && (
+                          <span style={styles.grade}>Grade: {sub.assignedGrade}</span>
+                        )}
+                        {sub.updateTime && (
+                          <span style={styles.submissionTime}>
+                            {new Date(sub.updateTime).toLocaleDateString()}{' '}
+                            {new Date(sub.updateTime).toLocaleTimeString()}
+                          </span>
+                        )}
+                        {(sub.state === 'TURNED_IN' || sub.state === 'RETURNED') && (
+                          <span style={styles.viewWorkHint}>
+                            {previewUserId === sub.userId ? 'hide' : 'view work'}
+                          </span>
+                        )}
+                      </div>
+                      {previewUserId === sub.userId && (
+                        <div style={styles.previewBox}>
+                          {previewLoading
+                            ? <span style={{ color: '#aaa', fontSize: '0.85rem' }}>Loading...</span>
+                            : <pre style={styles.previewText}>{previewText}</pre>
+                          }
+                        </div>
                       )}
                     </div>
                   ))}
@@ -309,6 +361,18 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#666',
     fontStyle: 'italic',
     fontSize: '0.9rem',
+  },
+  viewWorkHint: {
+    marginLeft: 'auto', fontSize: '0.75rem', color: '#1a73e8', fontStyle: 'italic',
+  },
+  previewBox: {
+    margin: '4px 0 8px 0', padding: '12px 16px',
+    backgroundColor: '#fff', border: '1px solid #e8eaed', borderRadius: '6px',
+    maxHeight: '300px', overflowY: 'auto' as const,
+  },
+  previewText: {
+    fontSize: '0.83rem', color: '#333', lineHeight: 1.65,
+    whiteSpace: 'pre-wrap' as const, fontFamily: 'inherit', margin: 0,
   },
   gradeBtn: {
     padding: '4px 10px',

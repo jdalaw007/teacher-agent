@@ -93,6 +93,14 @@ def _save_result(teacher_user_id: str, course_id: str, assignment_id: str, assig
         pass  # Don't let DB errors break the stream
 
 
+RUBRIC_GEN_PROMPT = """You are a teacher's assistant. Generate a concise grading rubric for this assignment:
+Title: {title}
+Description: {description}
+Max points: {max_points}
+
+Return a short rubric (3-5 criteria with point values that add up to {max_points}). Plain text, no JSON."""
+
+
 GRADE_PROMPT = """You are grading a student assignment. Do two things:
 1. AI-DETECTION: Rate 1-10 how likely this was written by AI (10=definitely AI).
 2. GRADING: Grade against this rubric and assign a score out of {max_points}:
@@ -117,12 +125,34 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
 
         classroom = ClassroomService(token)
 
-        # Get assignment title for record-keeping
+        # Get assignment title and description for record-keeping + rubric gen
+        assignment_title = assignment_id
+        assignment_description = ""
         try:
             assignment_data = classroom.get_assignment(course_id, assignment_id)
             assignment_title = assignment_data.get("title", assignment_id)
+            assignment_description = assignment_data.get("description", "")
         except Exception:
-            assignment_title = assignment_id
+            pass
+
+        # Auto-generate rubric if not provided
+        if not rubric.strip():
+            yield sse({"type": "status", "message": "Generating rubric with AI..."})
+            try:
+                rubric_prompt = RUBRIC_GEN_PROMPT.format(
+                    title=assignment_title,
+                    description=assignment_description or "No description provided.",
+                    max_points=max_points,
+                )
+                rubric_response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": rubric_prompt}],
+                    max_tokens=300,
+                )
+                rubric = rubric_response.choices[0].message.content.strip()
+                yield sse({"type": "rubric_generated", "rubric": rubric})
+            except Exception as e:
+                rubric = f"Content accuracy and completeness ({max_points} pts)"
 
         submissions = classroom.list_submissions(course_id, assignment_id)
 
