@@ -515,6 +515,35 @@ export default function SettingsPage() {
           </button>
         </div>
 
+        <div style={s.helpFooter}>
+          <a
+            href="https://github.com/jdalaw007/teacher-agent/wiki"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={s.helpLink}
+          >
+            Help &amp; Documentation
+          </a>
+          <span style={s.helpDivider}>·</span>
+          <a
+            href="https://github.com/jdalaw007/teacher-agent/wiki/Known-Limitations"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={s.helpLink}
+          >
+            Known Limitations
+          </a>
+          <span style={s.helpDivider}>·</span>
+          <a
+            href="https://github.com/jdalaw007/teacher-agent/wiki/GDPR-and-Data-Privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={s.helpLink}
+          >
+            GDPR &amp; Privacy
+          </a>
+        </div>
+
       </div>
     </div>
   )
@@ -570,4 +599,7 @@ const s: { [k: string]: React.CSSProperties } = {
   privacyTable: { width: '100%', borderCollapse: 'collapse' as const, fontSize: '0.84rem' },
   privacyTh: { textAlign: 'left' as const, padding: '6px 10px', backgroundColor: '#f8f9fa', color: '#666', fontWeight: 600, borderBottom: '1px solid #e8e8e8' },
   privacyTd: { padding: '6px 10px', color: '#444', borderBottom: '1px solid #f0f0f0', verticalAlign: 'top' as const },
+  helpFooter: { display: 'flex', alignItems: 'center', gap: '8px', padding: '20px 0 8px', justifyContent: 'center' },
+  helpLink: { fontSize: '0.85rem', color: '#1a73e8', textDecoration: 'none' },
+  helpDivider: { color: '#ccc', fontSize: '0.85rem' },
 }

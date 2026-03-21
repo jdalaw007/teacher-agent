@@ -341,6 +341,28 @@ TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_documentation",
+            "description": "Look up how-to information about the app's features. Use when the teacher asks how something works, where to find a feature, or what the app can do.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "The topic to look up",
+                        "enum": [
+                            "getting_started", "ai_chat_agent", "assignment_generator",
+                            "document_library", "student_profiles", "scheduled_posts",
+                            "content_checker", "settings", "gdpr_privacy", "known_limitations",
+                        ],
+                    },
+                },
+                "required": ["topic"],
+            },
+        },
+    },
 ]
 
 
@@ -713,6 +735,111 @@ class ChatAgentService:
                 from app.services.profile import ProfileService
                 ProfileService(self.teacher_user_id).save_profile({"language": lang})
                 return json.dumps({"success": True, "language": lang})
+
+            elif tool_name == "get_documentation":
+                topic = arguments.get("topic", "getting_started")
+                WIKI_BASE = "https://github.com/jdalaw007/teacher-agent/wiki"
+                DOCS = {
+                    "getting_started": {
+                        "url": f"{WIKI_BASE}/Getting-Started",
+                        "summary": (
+                            "Log in with Google, then complete the 3-step onboarding: "
+                            "(1) About You — name, school, role; "
+                            "(2) Your Work — subjects and grade levels; "
+                            "(3) API Key — paste your OpenAI or Gemini key. "
+                            "After onboarding you land on the Dashboard: AI chat on the left, "
+                            "recent submissions on the right."
+                        ),
+                    },
+                    "ai_chat_agent": {
+                        "url": f"{WIKI_BASE}/AI-Chat-Agent",
+                        "summary": (
+                            "The Chat page is a full AI conversation interface. The agent has tools: "
+                            "search_corpus, get_student_data, get_class_assignments, get_class_roster, "
+                            "post_assignment, post_announcement, search_memories, log_strategy. "
+                            "Just ask naturally — the agent picks the right tool. "
+                            "Conversations are summarised into episodic and semantic memory when ended. "
+                            "Voice input works in Chrome and Edge."
+                        ),
+                    },
+                    "assignment_generator": {
+                        "url": f"{WIKI_BASE}/Assignment-Generator",
+                        "summary": (
+                            "Go to Agent, select a class and optionally a student or group, enter a topic, "
+                            "grade level, and type, then click Generate. The AI uses your corpus documents "
+                            "as source material. After generating you can Improve the draft or run Check Content "
+                            "before posting to Google Classroom."
+                        ),
+                    },
+                    "document_library": {
+                        "url": f"{WIKI_BASE}/Document-Library",
+                        "summary": (
+                            "The corpus (Agent > Corpus tab) is your document library. Upload PDF, DOCX, or "
+                            "plain text files, import from Google Drive, paste text directly, or import from a URL. "
+                            "Documents are organised per class. Link classes together so the same documents "
+                            "are searchable across multiple classes without re-uploading."
+                        ),
+                    },
+                    "student_profiles": {
+                        "url": f"{WIKI_BASE}/Student-Profiles-and-Groups",
+                        "summary": (
+                            "Student rosters sync automatically from Google Classroom. You can add private notes "
+                            "per student, track submission history, and create custom groups. Student names and "
+                            "emails are pseudonymised before being sent to the AI. "
+                            "Ask the agent about groups or individual students naturally in chat."
+                        ),
+                    },
+                    "scheduled_posts": {
+                        "url": f"{WIKI_BASE}/Scheduled-Posts",
+                        "summary": (
+                            "From a class detail page, click Schedule Post. Choose assignment or announcement, "
+                            "set the content, frequency (weekly/biweekly/monthly), day, and time. "
+                            "Posts are sent automatically and repeat on the chosen schedule. "
+                            "You can enable, disable, edit, or delete scheduled posts from the same page."
+                        ),
+                    },
+                    "content_checker": {
+                        "url": f"{WIKI_BASE}/Content-Checker",
+                        "summary": (
+                            "After generating an assignment, click Check Content to run a second AI review. "
+                            "It checks for age-inappropriate content, factual errors, bias, and unclear instructions. "
+                            "The output is advisory — you decide whether to post. Rate limit: 20 checks per minute."
+                        ),
+                    },
+                    "settings": {
+                        "url": f"{WIKI_BASE}/Settings-and-Configuration",
+                        "summary": (
+                            "Settings lets you update your profile, switch AI provider (OpenAI GPT-4o or Gemini 2.0 Flash), "
+                            "test your API key, change the interface language (English, Czech, Russian, Spanish, French), "
+                            "download your data export, and switch Google account. "
+                            "Full documentation is linked at the bottom of the Settings page."
+                        ),
+                    },
+                    "gdpr_privacy": {
+                        "url": f"{WIKI_BASE}/GDPR-and-Data-Privacy",
+                        "summary": (
+                            "The app complies with EU GDPR and Czech Act 110/2019. Key protections: "
+                            "student names/emails are pseudonymised before reaching the AI; "
+                            "nightly retention enforcement deletes expired records automatically; "
+                            "right to erasure via Settings (delete student or full account); "
+                            "data export available (Art. 20); full audit log kept. "
+                            "Age of consent in CZ is 15 — parental consent required for under-15s. "
+                            "A DPIA + FRIA is required before school deployment."
+                        ),
+                    },
+                    "known_limitations": {
+                        "url": f"{WIKI_BASE}/Known-Limitations",
+                        "summary": (
+                            "Key limitations: (1) Switching AI providers (OpenAI <-> Gemini) breaks memory search "
+                            "because the two providers use incompatible embedding models — pick one and stick with it. "
+                            "(2) Voice input only works in Chrome and Edge. "
+                            "(3) Gmail and Calendar integrations are not yet available. "
+                            "(4) SQLite storage is suitable for single-teacher use, not school-wide concurrency."
+                        ),
+                    },
+                }
+                doc = DOCS.get(topic, DOCS["getting_started"])
+                return json.dumps({"topic": topic, "summary": doc["summary"], "wiki_url": doc["url"]})
 
             else:
                 return json.dumps({"error": f"Unknown tool: {tool_name}"})
