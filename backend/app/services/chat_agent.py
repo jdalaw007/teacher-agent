@@ -267,6 +267,27 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "search_drive",
+            "description": "Search the teacher's Google Drive for files and folders by name or keyword. Returns file names, types, and links.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search term — file name, keyword, or Drive query (e.g. 'unit 5 test', 'scheme of work')",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return (default 10)",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "print_document",
             "description": (
                 "Search Google Drive for a document and print it on the local printer. "
@@ -382,7 +403,7 @@ _SKILL_TOOL_MAP = {
         "trash_email", "archive_email", "file_email", "list_gmail_labels",
     },
     "calendar": {"get_calendar_events"},
-    "drive_print": {"print_document"},
+    "drive_print": {"search_drive", "print_document"},
 }
 
 
@@ -712,6 +733,27 @@ class ChatAgentService:
                 from app.services.gmail_service import GmailService
                 gmail = GmailService(self.access_token)
                 return json.dumps(gmail.list_labels())
+
+            elif tool_name == "search_drive":
+                query = arguments.get("query", "")
+                max_results = int(arguments.get("max_results", 10))
+                from app.services.drive import DriveService
+                files = DriveService(self.access_token).search_files(
+                    f"name contains '{query}'", page_size=max_results
+                )
+                if not files:
+                    return json.dumps({"results": [], "message": f"No files found matching: {query}"})
+                results = [
+                    {
+                        "name": f.get("name"),
+                        "type": f.get("mimeType", "").split(".")[-1],
+                        "modified": f.get("modifiedTime", "")[:10],
+                        "link": f.get("webViewLink", ""),
+                        "id": f.get("id"),
+                    }
+                    for f in files
+                ]
+                return json.dumps({"results": results, "count": len(results)})
 
             elif tool_name == "print_document":
                 query = arguments.get("query", "")
