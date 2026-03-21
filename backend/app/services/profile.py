@@ -17,8 +17,9 @@ class ProfileService:
             p = dict(row)
             p["subjects"] = json.loads(p.get("subjects") or "[]")
             p["grade_levels"] = json.loads(p.get("grade_levels") or "[]")
-            # Never return the raw API key to callers — use get_api_key() instead
+            # Never return raw API keys to callers — use get_api_key() / get_gemini_api_key() instead
             p["has_api_key"] = bool(p.pop("openai_api_key", None))
+            p["has_gemini_key"] = bool(p.pop("gemini_api_key", None))
             return p
         finally:
             db.close()
@@ -31,9 +32,31 @@ class ProfileService:
                 "SELECT openai_api_key FROM user_profiles WHERE user_id = ?",
                 (self.user_id,)
             ).fetchone()
-            if row:
-                return row["openai_api_key"] or ""
-            return ""
+            return (row["openai_api_key"] or "") if row else ""
+        finally:
+            db.close()
+
+    def get_gemini_api_key(self) -> str:
+        """Return the user's stored Gemini API key, or empty string."""
+        db = get_db()
+        try:
+            row = db.execute(
+                "SELECT gemini_api_key FROM user_profiles WHERE user_id = ?",
+                (self.user_id,)
+            ).fetchone()
+            return (row["gemini_api_key"] or "") if row else ""
+        finally:
+            db.close()
+
+    def get_ai_provider(self) -> str:
+        """Return the user's preferred AI provider ('openai' or 'gemini')."""
+        db = get_db()
+        try:
+            row = db.execute(
+                "SELECT ai_provider FROM user_profiles WHERE user_id = ?",
+                (self.user_id,)
+            ).fetchone()
+            return (row["ai_provider"] or "openai") if row else "openai"
         finally:
             db.close()
 
@@ -41,6 +64,8 @@ class ProfileService:
         subjects = json.dumps(data.get("subjects", []))
         grade_levels = json.dumps(data.get("grade_levels", []))
         api_key = data.get("openai_api_key", "")
+        gemini_key = data.get("gemini_api_key", "")
+        ai_provider = data.get("ai_provider", "")
 
         db = get_db()
         try:
@@ -61,6 +86,8 @@ class ProfileService:
                         teaching_style = ?,
                         about = ?,
                         openai_api_key = CASE WHEN ? = '' THEN openai_api_key ELSE ? END,
+                        gemini_api_key = CASE WHEN ? = '' THEN gemini_api_key ELSE ? END,
+                        ai_provider = CASE WHEN ? = '' THEN ai_provider ELSE ? END,
                         language = CASE WHEN ? = '' THEN language ELSE ? END,
                         onboarding_complete = 1,
                         updated_at = datetime('now')
@@ -74,6 +101,8 @@ class ProfileService:
                     data.get("teaching_style", ""),
                     data.get("about", ""),
                     api_key, api_key,
+                    gemini_key, gemini_key,
+                    ai_provider, ai_provider,
                     language, language,
                     self.user_id,
                 ))
@@ -81,8 +110,9 @@ class ProfileService:
                 db.execute("""
                     INSERT INTO user_profiles
                         (user_id, display_name, school_org, role, subjects,
-                         grade_levels, teaching_style, about, openai_api_key, language, onboarding_complete)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                         grade_levels, teaching_style, about, openai_api_key,
+                         gemini_api_key, ai_provider, language, onboarding_complete)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                 """, (
                     self.user_id,
                     data.get("display_name", ""),
@@ -93,6 +123,8 @@ class ProfileService:
                     data.get("teaching_style", ""),
                     data.get("about", ""),
                     api_key,
+                    gemini_key,
+                    ai_provider or "openai",
                     language or "English",
                 ))
             db.commit()

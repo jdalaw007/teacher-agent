@@ -15,14 +15,15 @@ def _get_openai_client():
     return OpenAI(api_key=settings.openai_api_key)
 
 
-def _get_embedding(text: str) -> list[float] | None:
-    """Get embedding vector from OpenAI text-embedding-3-small."""
-    client = _get_openai_client()
+def _get_embedding(text: str, client=None, model: str = "text-embedding-3-small") -> list[float] | None:
+    """Get embedding vector. Uses provided client/model or falls back to default OpenAI."""
+    if client is None:
+        client = _get_openai_client()
     if not client:
         return None
     try:
         response = client.embeddings.create(
-            model="text-embedding-3-small",
+            model=model,
             input=text[:8000],  # truncate to stay within limits
         )
         return response.data[0].embedding
@@ -177,9 +178,10 @@ def reopen_conversation(conversation_id: str) -> dict | None:
 
 def save_episodic_memory(teacher_user_id: str, content: str,
                          conversation_id: str = None, tags: list[str] = None,
-                         memory_type: str = "general") -> dict:
+                         memory_type: str = "general",
+                         embedding_client=None, embedding_model: str = "text-embedding-3-small") -> dict:
     """Save an episodic memory with embedding."""
-    embedding = _get_embedding(content)
+    embedding = _get_embedding(content, client=embedding_client, model=embedding_model)
     db = get_db()
     try:
         db.execute(
@@ -201,9 +203,10 @@ def save_episodic_memory(teacher_user_id: str, content: str,
 
 
 def search_episodic_memories(teacher_user_id: str, query: str,
-                             limit: int = 5, tag_filter: str = None) -> list[dict]:
+                             limit: int = 5, tag_filter: str = None,
+                             embedding_client=None, embedding_model: str = "text-embedding-3-small") -> list[dict]:
     """Search episodic memories using semantic similarity."""
-    query_embedding = _get_embedding(query)
+    query_embedding = _get_embedding(query, client=embedding_client, model=embedding_model)
     db = get_db()
     try:
         if tag_filter:
@@ -245,9 +248,10 @@ def search_episodic_memories(teacher_user_id: str, query: str,
 
 def save_semantic_memory(teacher_user_id: str, content: str,
                          category: str = "general", confidence: float = 0.5,
-                         source_episodic_ids: list[int] = None) -> dict:
+                         source_episodic_ids: list[int] = None,
+                         embedding_client=None, embedding_model: str = "text-embedding-3-small") -> dict:
     """Save a semantic (distilled) memory."""
-    embedding = _get_embedding(content)
+    embedding = _get_embedding(content, client=embedding_client, model=embedding_model)
     db = get_db()
     try:
         db.execute(
@@ -270,9 +274,10 @@ def save_semantic_memory(teacher_user_id: str, content: str,
 
 
 def search_semantic_memories(teacher_user_id: str, query: str,
-                             limit: int = 5) -> list[dict]:
+                             limit: int = 5,
+                             embedding_client=None, embedding_model: str = "text-embedding-3-small") -> list[dict]:
     """Search semantic memories using semantic similarity."""
-    query_embedding = _get_embedding(query)
+    query_embedding = _get_embedding(query, client=embedding_client, model=embedding_model)
     db = get_db()
     try:
         rows = db.execute(
@@ -360,10 +365,13 @@ def evaluate_strategy(strategy_id: int, outcome: str, outcome_rating: int) -> di
 # --- Composite ---
 
 def get_relevant_memories(teacher_user_id: str, query: str,
-                          limit: int = 5) -> dict:
+                          limit: int = 5,
+                          embedding_client=None, embedding_model: str = "text-embedding-3-small") -> dict:
     """Get mixed episodic + semantic memories relevant to a query."""
-    episodic = search_episodic_memories(teacher_user_id, query, limit=limit)
-    semantic = search_semantic_memories(teacher_user_id, query, limit=limit)
+    episodic = search_episodic_memories(teacher_user_id, query, limit=limit,
+                                        embedding_client=embedding_client, embedding_model=embedding_model)
+    semantic = search_semantic_memories(teacher_user_id, query, limit=limit,
+                                        embedding_client=embedding_client, embedding_model=embedding_model)
     return {
         "episodic": episodic,
         "semantic": semantic,

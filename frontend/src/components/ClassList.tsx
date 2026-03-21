@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 
 interface Course {
   id: string
@@ -15,11 +16,12 @@ interface ClassListProps {
 
 export default function ClassList({ courses }: ClassListProps) {
   const router = useRouter()
+  const t = useTranslations('classList')
 
   if (courses.length === 0) {
     return (
       <div style={styles.empty}>
-        <p>No classes found. Make sure you have classes in Google Classroom.</p>
+        <p>{t('noClasses')}</p>
       </div>
     )
   }

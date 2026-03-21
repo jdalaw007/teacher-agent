@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -15,31 +16,6 @@ interface ToolStatus {
   status: 'calling' | 'done'
 }
 
-const TOOL_LABELS: Record<string, string> = {
-  navigate: 'Navigating...',
-  search_corpus: 'Searching documents...',
-  get_student_data: 'Looking up students...',
-  get_class_assignments: 'Fetching assignments...',
-  get_class_roster: 'Loading roster...',
-  post_assignment: 'Posting assignment...',
-  post_announcement: 'Posting announcement...',
-  search_memories: 'Searching memories...',
-  log_strategy: 'Logging strategy...',
-  set_language: 'Changing language...',
-}
-
-const PAGE_LABELS: Record<string, string> = {
-  '/dashboard': 'Dashboard',
-  '/classes': 'Classes',
-  '/files': 'Files',
-  '/inbox': 'Inbox',
-  '/calendar': 'Calendar',
-  '/settings': 'Settings',
-  '/admin': 'Admin',
-  '/onboarding': 'Onboarding',
-  '/agent': 'Assignment Generator',
-}
-
 const LANG_CODES: Record<string, string> = {
   English: 'en-US',
   Czech: 'cs-CZ',
@@ -48,9 +24,9 @@ const LANG_CODES: Record<string, string> = {
   French: 'fr-FR',
 }
 
-function getPageLabel(pathname: string): string {
-  if (PAGE_LABELS[pathname]) return PAGE_LABELS[pathname]
-  if (pathname.startsWith('/classes/')) return 'Class Detail'
+function getPageLabel(pathname: string, pageLabels: Record<string, string>, classDetailLabel: string): string {
+  if (pageLabels[pathname]) return pageLabels[pathname]
+  if (pathname.startsWith('/classes/')) return classDetailLabel
   return pathname.replace('/', '').replace(/-/g, ' ') || 'App'
 }
 
@@ -70,6 +46,35 @@ function renderContent(text: string) {
 export default function FloatingAgent() {
   const pathname = usePathname() || ''
   const router = useRouter()
+  const t = useTranslations('floatingAgent')
+  const tCommon = useTranslations('common')
+  const tNav = useTranslations('nav')
+
+  const TOOL_LABELS: Record<string, string> = {
+    navigate: t('toolNavigating'),
+    search_corpus: t('toolSearchCorpus'),
+    get_student_data: t('toolGetStudents'),
+    get_class_assignments: t('toolGetAssignments'),
+    get_class_roster: t('toolGetRoster'),
+    post_assignment: t('toolPostAssignment'),
+    post_announcement: t('toolPostAnnouncement'),
+    search_memories: t('toolSearchMemories'),
+    log_strategy: t('toolLogStrategy'),
+    set_language: t('toolSetLanguage'),
+  }
+
+  const PAGE_LABELS: Record<string, string> = {
+    '/dashboard': tNav('dashboard'),
+    '/classes': tNav('classes'),
+    '/files': tNav('files'),
+    '/inbox': tNav('inbox'),
+    '/calendar': tNav('calendar'),
+    '/settings': tNav('settings'),
+    '/admin': tNav('admin'),
+    '/onboarding': t('pageOnboarding'),
+    '/agent': tNav('agent'),
+  }
+
   const [open, setOpen] = useState(false)
   const [hasToken, setHasToken] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
@@ -90,7 +95,7 @@ export default function FloatingAgent() {
     setHasToken(!!localStorage.getItem('token'))
     setTtsEnabled(localStorage.getItem('agent_tts') === 'true')
     // Check voice support
-    const hasSTT = !!(window.SpeechRecognition || (window as any).webkitSpeechRecognition)
+    const hasSTT = !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
     setVoiceSupported(hasSTT)
     // Fetch language preference
     const token = localStorage.getItem('token')
@@ -130,7 +135,7 @@ export default function FloatingAgent() {
   }, [])
 
   const startListening = useCallback(() => {
-    const SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognition) return
     const recognition = new SpeechRecognition()
     recognition.lang = langCode
@@ -189,7 +194,7 @@ export default function FloatingAgent() {
   const hide = pathname === '/' || pathname === '/dashboard' || !hasToken
   if (hide) return null
 
-  const pageLabel = getPageLabel(pathname)
+  const pageLabel = getPageLabel(pathname, PAGE_LABELS, t('pageClassDetail'))
 
   const send = async (text?: string) => {
     const msg = (text ?? input).trim()
@@ -252,7 +257,7 @@ export default function FloatingAgent() {
       }
       setStreamingContent('')
     } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Something went wrong. Please try again.' }])
+      setMessages(prev => [...prev, { role: 'assistant', content: tCommon('error') }])
       setStreamingContent('')
     } finally {
       setStreaming(false)
@@ -278,8 +283,8 @@ export default function FloatingAgent() {
       <button
         onClick={() => setOpen(o => !o)}
         style={s.fab}
-        title="Open Agent"
-        aria-label="Toggle agent chat"
+        title={t('openAgent')}
+        aria-label={t('openAgent')}
       >
         {open ? <CloseIcon /> : <ChatIcon />}
       </button>
@@ -290,7 +295,7 @@ export default function FloatingAgent() {
           {/* Header */}
           <div style={s.header}>
             <div style={s.headerLeft}>
-              <span style={s.headerTitle}>Agent</span>
+              <span style={s.headerTitle}>{t('agentTitle')}</span>
               <span style={s.pageTag}>{pageLabel}</span>
             </div>
             <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
@@ -298,16 +303,16 @@ export default function FloatingAgent() {
               <button
                 onClick={toggleTts}
                 style={{ ...s.headerBtn, color: ttsEnabled ? '#1a73e8' : '#ccc' }}
-                title={ttsEnabled ? 'Mute agent voice' : 'Enable agent voice'}
+                title={ttsEnabled ? t('muteVoice') : t('enableVoice')}
               >
                 <SpeakerIcon active={ttsEnabled} />
               </button>
               {messages.length > 0 && (
-                <button onClick={clearChat} style={s.headerBtn} title="New conversation">
+                <button onClick={clearChat} style={s.headerBtn} title={t('newConversation')}>
                   <NewIcon />
                 </button>
               )}
-              <button onClick={() => setOpen(false)} style={s.headerBtn} title="Minimize">
+              <button onClick={() => setOpen(false)} style={s.headerBtn} title={t('minimize')}>
                 <MinimizeIcon />
               </button>
             </div>
@@ -317,9 +322,7 @@ export default function FloatingAgent() {
           <div style={s.messages}>
             {messages.length === 0 && !streaming && (
               <div style={s.emptyState}>
-                {voiceSupported
-                  ? 'Ask me anything — type or tap the mic to speak.'
-                  : 'Ask me anything about your students, classes, or content.'}
+                {voiceSupported ? t('emptyVoice') : t('emptyText')}
               </div>
             )}
 
@@ -363,7 +366,7 @@ export default function FloatingAgent() {
                   background: listening ? '#ea4335' : '#f1f3f4',
                   boxShadow: listening ? '0 0 0 4px rgba(234,67,53,0.2)' : 'none',
                 }}
-                title={listening ? 'Stop listening' : 'Speak'}
+                title={listening ? t('stopListening') : t('speak')}
               >
                 <MicIcon active={listening} />
               </button>
@@ -374,7 +377,7 @@ export default function FloatingAgent() {
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKey}
               rows={1}
-              placeholder={listening ? 'Listening...' : 'Ask your agent...'}
+              placeholder={listening ? t('listening') : t('askAgent')}
               style={{ ...s.textarea, borderColor: listening ? '#ea4335' : '#e0e0e0' }}
               disabled={streaming}
             />

@@ -24,11 +24,17 @@ class SaveProfileRequest(BaseModel):
     teaching_style: Optional[str] = ""
     about: Optional[str] = ""
     openai_api_key: Optional[str] = ""
+    gemini_api_key: Optional[str] = ""
+    ai_provider: Optional[str] = ""
     language: Optional[str] = ""
 
 
 class TestKeyRequest(BaseModel):
     openai_api_key: str
+
+
+class TestGeminiKeyRequest(BaseModel):
+    gemini_api_key: str
 
 
 @router.get("/profile")
@@ -39,8 +45,8 @@ async def get_profile(request: Request):
     profile = service.get_profile()
     if not profile:
         return {"exists": False, "onboarding_complete": False}
-    has_api_key = bool(service.get_api_key())
-    return {"exists": True, "has_api_key": has_api_key, **profile}
+    # profile already contains has_api_key, has_gemini_key (raw keys stripped by get_profile)
+    return {"exists": True, **profile}
 
 
 @router.post("/profile")
@@ -70,6 +76,33 @@ async def test_api_key(body: TestKeyRequest):
     except Exception as e:
         err = str(e)
         if "Incorrect API key" in err or "invalid_api_key" in err or "401" in err:
+            return {"valid": False, "error": "Invalid API key"}
+        if "quota" in err.lower() or "429" in err:
+            return {"valid": True, "warning": "Key valid but quota may be exceeded"}
+        return {"valid": False, "error": err[:200]}
+
+
+@router.post("/test-gemini-key")
+async def test_gemini_key(body: TestGeminiKeyRequest):
+    """Test that a Gemini API key is valid via the OpenAI-compatible endpoint."""
+    key = body.gemini_api_key.strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="No key provided")
+    try:
+        from openai import OpenAI
+        client = OpenAI(
+            api_key=key,
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        )
+        client.chat.completions.create(
+            model="gemini-2.0-flash",
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=1,
+        )
+        return {"valid": True}
+    except Exception as e:
+        err = str(e)
+        if "401" in err or "API_KEY_INVALID" in err or "invalid" in err.lower():
             return {"valid": False, "error": "Invalid API key"}
         if "quota" in err.lower() or "429" in err:
             return {"valid": True, "warning": "Key valid but quota may be exceeded"}

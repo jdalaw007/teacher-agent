@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import { useTranslations } from 'next-intl'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -40,6 +41,8 @@ interface PreviewState {
 
 export default function FilesPage() {
   const router = useRouter()
+  const t = useTranslations('files')
+  const tCommon = useTranslations('common')
   const [token, setToken] = useState<string | null>(null)
   const [courses, setCourses] = useState<Course[]>([])
   const [folders, setFolders] = useState<Folder[]>([])
@@ -163,7 +166,7 @@ export default function FilesPage() {
 
   const deleteFolder = async (e: React.MouseEvent, folderId: string) => {
     e.stopPropagation()
-    if (!token || !confirm('Delete this folder?')) return
+    if (!token || !confirm(t('deleteFolder'))) return
     await fetch(`${API_URL}/files/folders/${folderId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
@@ -194,7 +197,7 @@ export default function FilesPage() {
   }
 
   const deleteDoc = async (docId: string) => {
-    if (!token || !confirm('Delete this file?')) return
+    if (!token || !confirm(t('deleteFile'))) return
     await fetch(`${API_URL}/files/documents/${docId}?class_id=${selected.class_id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
@@ -211,7 +214,7 @@ export default function FilesPage() {
 
   const currentClass = courses.find(c => c.id === selected.class_id)
   const currentFolder = folders.find(f => f.id === selected.folder_id)
-  const locationLabel = selected.class_id === 'general' ? 'General' : (currentClass?.name ?? selected.class_id)
+  const locationLabel = selected.class_id === 'general' ? tCommon('general') : (currentClass?.name ?? selected.class_id)
 
   const FileIcon = ({ filename }: { filename?: string }) => {
     const isPdf = filename?.toLowerCase().endsWith('.pdf')
@@ -249,7 +252,7 @@ export default function FilesPage() {
     </div>
   )
 
-  if (loading) return <div style={s.loading}>Loading...</div>
+  if (loading) return <div style={s.loading}>{tCommon('loading')}</div>
 
   return (
     <div style={s.page}>
@@ -257,11 +260,11 @@ export default function FilesPage() {
 
       {/* Left tree */}
       <div style={s.tree}>
-        <div style={s.treeHeader}>My Files</div>
+        <div style={s.treeHeader}>{t('myFiles')}</div>
 
         {/* General */}
         <TreeItem
-          label="General"
+          label={tCommon('general')}
           isActive={selected.class_id === 'general' && !selected.folder_id}
           onClick={() => selectItem('general', null)}
           icon={<FolderIcon />}
@@ -334,7 +337,7 @@ export default function FilesPage() {
               onChange={handleUpload} accept=".pdf,.txt,.docx,.md" />
             <button style={{ ...s.uploadBtn, opacity: uploading ? 0.6 : 1 }}
               onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-              {uploading ? 'Uploading...' : 'Upload file'}
+              {uploading ? tCommon('uploading') : t('uploadFile')}
             </button>
           </div>
         </div>
@@ -343,15 +346,15 @@ export default function FilesPage() {
           {/* File grid */}
           <div style={{ ...s.gridPane, flex: preview ? '0 0 280px' : 1 }}>
             {docsLoading ? (
-              <div style={s.emptyState}><span style={{ color: '#aaa' }}>Loading...</span></div>
+              <div style={s.emptyState}><span style={{ color: '#aaa' }}>{tCommon('loading')}</span></div>
             ) : visibleDocs.length === 0 ? (
               <div style={s.emptyState}>
                 <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#ddd" strokeWidth="1.2">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                   <polyline points="14 2 14 8 20 8"/>
                 </svg>
-                <div style={s.emptyTitle}>No files here</div>
-                <div style={s.emptyHint}>Upload a file to get started</div>
+                <div style={s.emptyTitle}>{t('noFiles')}</div>
+                <div style={s.emptyHint}>{t('noFilesHint')}</div>
               </div>
             ) : (
               <div style={s.fileGrid}>
@@ -385,8 +388,8 @@ export default function FilesPage() {
                       <div style={s.fileSubtitle}>{doc.filename}</div>
                     )}
                     <div style={s.fileActions}>
-                      <button style={s.fileActionBtn} onClick={(e) => startRename(doc, e)}>Rename</button>
-                      <button style={{ ...s.fileActionBtn, color: '#e57373' }} onClick={(e) => { e.stopPropagation(); deleteDoc(doc.id) }}>Delete</button>
+                      <button style={s.fileActionBtn} onClick={(e) => startRename(doc, e)}>{t('rename')}</button>
+                      <button style={{ ...s.fileActionBtn, color: '#e57373' }} onClick={(e) => { e.stopPropagation(); deleteDoc(doc.id) }}>{t('delete')}</button>
                     </div>
                   </div>
                 ))}
@@ -404,14 +407,14 @@ export default function FilesPage() {
                     style={s.previewRenameBtn}
                     onClick={(e) => startRename(preview.doc, e)}
                   >
-                    Rename
+                    {t('rename')}
                   </button>
                   <button style={s.previewCloseBtn} onClick={() => setPreview(null)}>✕</button>
                 </div>
               </div>
               <div style={s.previewBody}>
                 {preview.loading ? (
-                  <span style={{ color: '#aaa' }}>Loading...</span>
+                  <span style={{ color: '#aaa' }}>{tCommon('loading')}</span>
                 ) : (
                   <pre style={s.previewText}>{preview.content}</pre>
                 )}
@@ -436,9 +439,9 @@ export default function FilesPage() {
               if (e.key === 'Enter') createFolder(classId)
               if (e.key === 'Escape') setNewFolderFor(null)
             }}
-            placeholder="Folder name"
+            placeholder={t('folderNamePlaceholder')}
           />
-          <button style={s.newFolderSave} onClick={() => createFolder(classId)}>Add</button>
+          <button style={s.newFolderSave} onClick={() => createFolder(classId)}>{t('addFolder')}</button>
           <button style={s.newFolderCancel} onClick={() => setNewFolderFor(null)}>×</button>
         </div>
       )
@@ -448,7 +451,7 @@ export default function FilesPage() {
         style={s.addFolderBtn}
         onClick={() => { setNewFolderFor(classId); setNewFolderName('') }}
       >
-        + New folder
+        {t('newFolder')}
       </button>
     )
   }

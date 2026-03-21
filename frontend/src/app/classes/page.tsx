@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import { useTranslations } from 'next-intl'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001'
 
@@ -22,6 +23,8 @@ interface LinkedClassGroup {
 
 export default function ClassesPage() {
   const router = useRouter()
+  const t = useTranslations('classes')
+  const tCommon = useTranslations('common')
   const [courses, setCourses] = useState<Course[]>([])
   const [loading, setLoading] = useState(true)
   const [linkedGroups, setLinkedGroups] = useState<LinkedClassGroup[]>([])
@@ -92,7 +95,7 @@ export default function ClassesPage() {
   const handleCreateLink = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newLinkName || selectedLinkClassIds.size < 2) {
-      setLinkMessage({ type: 'error', text: 'Enter a name and select at least 2 classes' })
+      setLinkMessage({ type: 'error', text: t('linkGroupError') })
       return
     }
     const token = localStorage.getItem('token')
@@ -107,7 +110,7 @@ export default function ClassesPage() {
         setNewLinkName('')
         setSelectedLinkClassIds(new Set())
         setShowCreateLink(false)
-        setLinkMessage({ type: 'success', text: 'Linked classes group created!' })
+        setLinkMessage({ type: 'success', text: t('linkGroupCreated') })
         fetchLinkedGroups()
       } else {
         const err = await res.json()
@@ -119,7 +122,7 @@ export default function ClassesPage() {
   }
 
   const handleDeleteLink = async (linkId: number) => {
-    if (!confirm('Delete this linked classes group?')) return
+    if (!confirm(t('deleteLink'))) return
     const token = localStorage.getItem('token')
     try {
       const res = await fetch(`${API_URL}/linked-classes/${linkId}`, {
@@ -127,7 +130,7 @@ export default function ClassesPage() {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (res.ok) {
-        setLinkMessage({ type: 'success', text: 'Link group deleted' })
+        setLinkMessage({ type: 'success', text: t('linkGroupDeleted') })
         fetchLinkedGroups()
       }
     } catch {
@@ -162,7 +165,7 @@ export default function ClassesPage() {
   if (loading) {
     return (
       <div style={styles.appLoading}>
-        <p style={{ color: '#888' }}>Loading...</p>
+        <p style={{ color: '#888' }}>{tCommon('loading')}</p>
       </div>
     )
   }
@@ -174,7 +177,7 @@ export default function ClassesPage() {
     <div style={styles.app}>
       <Sidebar />
       <main style={styles.main}>
-        <h1 style={styles.title}>Your Classes</h1>
+        <h1 style={styles.title}>{t('title')}</h1>
 
         <div style={styles.grid}>
           {activeClasses.map(course => (
@@ -188,9 +191,9 @@ export default function ClassesPage() {
                   onClick={() => handleToggleActive(course.id)}
                   disabled={togglingId === course.id}
                   style={styles.inactiveBtn}
-                  title="Mark as inactive"
+                  title={t('markInactive')}
                 >
-                  Set Inactive
+                  {t('setInactive')}
                 </button>
               </div>
             </div>
@@ -199,7 +202,7 @@ export default function ClassesPage() {
 
         {inactiveClasses.length > 0 && (
           <div style={styles.inactiveSection}>
-            <h2 style={styles.inactiveTitle}>Inactive Classes</h2>
+            <h2 style={styles.inactiveTitle}>{t('inactive')}</h2>
             <div style={styles.grid}>
               {inactiveClasses.map(course => (
                 <div key={course.id} style={{ ...styles.card, opacity: 0.55 }}>
@@ -213,7 +216,7 @@ export default function ClassesPage() {
                       disabled={togglingId === course.id}
                       style={styles.activeBtn}
                     >
-                      Set Active
+                      {t('setActive')}
                     </button>
                   </div>
                 </div>
@@ -224,9 +227,9 @@ export default function ClassesPage() {
 
         {courses.length > 1 && (
           <div style={styles.linkedSection}>
-            <h2 style={styles.linkedTitle}>Linked Classes (Shared Corpus)</h2>
+            <h2 style={styles.linkedTitle}>{t('linkedTitle')}</h2>
             <p style={styles.linkedHint}>
-              Link classes together so they share the same document corpus. Materials uploaded to one class become available to all linked classes.
+              {t('linkedHint')}
             </p>
 
             {linkMessage && (
@@ -236,20 +239,20 @@ export default function ClassesPage() {
             )}
 
             <button onClick={() => setShowCreateLink(!showCreateLink)} style={styles.button}>
-              {showCreateLink ? 'Cancel' : 'Create Link Group'}
+              {showCreateLink ? t('cancelLinkGroup') : t('createLinkGroup')}
             </button>
 
             {showCreateLink && (
               <form onSubmit={handleCreateLink} style={styles.linkForm}>
                 <input
                   type="text"
-                  placeholder="Group name (e.g., English Materials)"
+                  placeholder={t('linkGroupName')}
                   value={newLinkName}
                   onChange={(e) => setNewLinkName(e.target.value)}
                   style={styles.linkInput}
                   required
                 />
-                <p style={styles.linkFormHint}>Select classes to link (at least 2):</p>
+                <p style={styles.linkFormHint}>{t('selectClasses')}</p>
                 <div style={styles.linkCheckboxList}>
                   {courses.map((c) => (
                     <label key={c.id} style={styles.linkCheckboxLabel}>
@@ -262,7 +265,7 @@ export default function ClassesPage() {
                     </label>
                   ))}
                 </div>
-                <button type="submit" style={styles.linkSubmitBtn}>Create Link Group</button>
+                <button type="submit" style={styles.linkSubmitBtn}>{t('createLinkGroup')}</button>
               </form>
             )}
 

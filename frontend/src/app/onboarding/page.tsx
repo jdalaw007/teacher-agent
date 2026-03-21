@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -37,6 +38,8 @@ const EMPTY_FORM: FormData = {
 
 export default function OnboardingPage() {
   const router = useRouter()
+  const t = useTranslations('onboarding')
+  const tCommon = useTranslations('common')
   const [step, setStep] = useState(1)
   const [form, setForm] = useState<FormData>(EMPTY_FORM)
   const [subjectInput, setSubjectInput] = useState('')
@@ -57,6 +60,7 @@ export default function OnboardingPage() {
       .then(data => {
         if (data.name) setForm(f => ({ ...f, display_name: data.name }))
         if (data.email) setConnectedEmail(data.email)
+        if (data.language) localStorage.setItem('language', data.language)
       })
       .catch(() => {})
 
@@ -159,8 +163,8 @@ export default function OnboardingPage() {
 
         {/* Header */}
         <div style={s.header}>
-          <div style={s.logo}>Teacher Agent</div>
-          <div style={s.stepLabel}>Step {step} of 3</div>
+          <div style={s.logo}>{t('title')}</div>
+          <div style={s.stepLabel}>{t('stepOf', { step })}</div>
         </div>
 
         {/* Progress bar */}
@@ -171,40 +175,40 @@ export default function OnboardingPage() {
         {/* ── Step 1: About You ─────────────────────────────────── */}
         {step === 1 && (
           <div style={s.stepBody}>
-            <h2 style={s.stepTitle}>About you</h2>
-            <p style={s.stepSub}>This helps the AI understand who it's working with.</p>
+            <h2 style={s.stepTitle}>{t('step1Title')}</h2>
+            <p style={s.stepSub}>{t('step1Sub')}</p>
 
             {connectedEmail && (
               <div style={s.accountBanner}>
-                Signed in as <strong>{connectedEmail}</strong>
+                {t('signedInAs')} <strong>{connectedEmail}</strong>
                 <span style={s.accountSep}>·</span>
                 <a
                   href="/"
                   style={s.switchLink}
                   onClick={() => localStorage.removeItem('token')}
                 >
-                  Switch account
+                  {t('switchAccount')}
                 </a>
               </div>
             )}
 
-            <label style={s.label}>Your name *</label>
+            <label style={s.label}>{t('yourName')}</label>
             <input
               style={s.input}
               value={form.display_name}
               onChange={e => update('display_name', e.target.value)}
-              placeholder="e.g. Ms. Johnson"
+              placeholder={t('namePlaceholder')}
             />
 
-            <label style={s.label}>School or organization</label>
+            <label style={s.label}>{t('schoolOrg')}</label>
             <input
               style={s.input}
               value={form.school_org}
               onChange={e => update('school_org', e.target.value)}
-              placeholder="e.g. Lincoln Middle School"
+              placeholder={t('schoolPlaceholder')}
             />
 
-            <label style={s.label}>Your role</label>
+            <label style={s.label}>{t('yourRole')}</label>
             <div style={s.roleGrid}>
               {ROLES.map(r => (
                 <button
@@ -217,12 +221,12 @@ export default function OnboardingPage() {
               ))}
             </div>
 
-            <label style={s.label}>A little about yourself (optional)</label>
+            <label style={s.label}>{t('aboutYourself')}</label>
             <textarea
               style={{ ...s.input, height: '80px', resize: 'vertical' }}
               value={form.about}
               onChange={e => update('about', e.target.value)}
-              placeholder="e.g. I've been teaching 8th grade English for 12 years. I love project-based learning and helping struggling readers find books they love."
+              placeholder={t('aboutPlaceholder')}
             />
           </div>
         )}
@@ -230,10 +234,10 @@ export default function OnboardingPage() {
         {/* ── Step 2: Your Work ─────────────────────────────────── */}
         {step === 2 && (
           <div style={s.stepBody}>
-            <h2 style={s.stepTitle}>Your work</h2>
-            <p style={s.stepSub}>The AI uses this to personalise assignments and advice.</p>
+            <h2 style={s.stepTitle}>{t('step2Title')}</h2>
+            <p style={s.stepSub}>{t('step2Sub')}</p>
 
-            <label style={s.label}>Subjects you teach</label>
+            <label style={s.label}>{t('subjects')}</label>
             <div style={s.tagRow}>
               {form.subjects.map(sub => (
                 <span key={sub} style={s.tag}>
@@ -248,12 +252,12 @@ export default function OnboardingPage() {
                 value={subjectInput}
                 onChange={e => setSubjectInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSubject() } }}
-                placeholder="Type a subject and press Enter"
+                placeholder={t('subjectPlaceholder')}
               />
-              <button style={s.addBtn} onClick={addSubject}>Add</button>
+              <button style={s.addBtn} onClick={addSubject}>{tCommon('add')}</button>
             </div>
 
-            <label style={s.label}>Grade levels</label>
+            <label style={s.label}>{t('gradeLevels')}</label>
             <div style={s.gradeGrid}>
               {GRADE_OPTIONS.map(g => (
                 <button
@@ -266,12 +270,12 @@ export default function OnboardingPage() {
               ))}
             </div>
 
-            <label style={s.label}>Teaching style or philosophy (optional)</label>
+            <label style={s.label}>{t('teachingStyle')}</label>
             <textarea
               style={{ ...s.input, height: '90px', resize: 'vertical' }}
               value={form.teaching_style}
               onChange={e => update('teaching_style', e.target.value)}
-              placeholder="e.g. I use Socratic seminars and differentiated instruction. I believe in growth mindset and give frequent low-stakes formative assessments."
+              placeholder={t('teachingStylePlaceholder')}
             />
           </div>
         )}
@@ -279,29 +283,25 @@ export default function OnboardingPage() {
         {/* ── Step 3: API Key ───────────────────────────────────── */}
         {step === 3 && (
           <div style={s.stepBody}>
-            <h2 style={s.stepTitle}>Your API key</h2>
-            <p style={s.stepSub}>
-              The AI assistant runs on OpenAI. Paste your key below so the agent uses your
-              account — this gives you full control over usage and costs.
-            </p>
+            <h2 style={s.stepTitle}>{t('step3Title')}</h2>
+            <p style={s.stepSub}>{t('step3Sub')}</p>
 
             <div style={s.infoBox}>
-              <strong>How to get a key:</strong>
+              <strong>{t('apiKeyHowTo')}</strong>
               <ol style={{ margin: '8px 0 0 0', paddingLeft: '1.2rem', lineHeight: '1.8' }}>
-                <li>Go to <strong>platform.openai.com</strong> → API keys</li>
-                <li>Click <strong>Create new secret key</strong></li>
-                <li>Copy the key (starts with <code>sk-</code>)</li>
-                <li>Paste it below</li>
+                <li>{t('apiKeyStep1')}</li>
+                <li>{t('apiKeyStep2')}</li>
+                <li>{t('apiKeyStep3')}</li>
+                <li>{t('apiKeyStep4')}</li>
               </ol>
             </div>
 
-            <label style={s.label}>OpenAI API key</label>
+            <label style={s.label}>{t('apiKeyLabel')}</label>
             <input
               style={{
                 ...s.input,
                 fontFamily: 'monospace',
-                borderColor: keyStatus === 'valid' ? '#34a853'
-                  : keyStatus === 'invalid' ? '#ea4335' : '#ddd',
+                border: `1px solid ${keyStatus === 'valid' ? '#34a853' : keyStatus === 'invalid' ? '#ea4335' : '#ddd'}`,
               }}
               type="password"
               value={form.openai_api_key}
@@ -318,10 +318,10 @@ export default function OnboardingPage() {
                 onClick={testKey}
                 disabled={!form.openai_api_key.trim() || keyStatus === 'testing'}
               >
-                {keyStatus === 'testing' ? 'Testing...' : 'Test key'}
+                {keyStatus === 'testing' ? t('testingKey') : t('testKey')}
               </button>
               {keyStatus === 'valid' && (
-                <span style={{ color: '#34a853', fontSize: '0.9rem' }}>Key is valid</span>
+                <span style={{ color: '#34a853', fontSize: '0.9rem' }}>{t('keyValid')}</span>
               )}
               {keyStatus === 'invalid' && (
                 <span style={{ color: '#ea4335', fontSize: '0.9rem' }}>{keyError}</span>
@@ -329,8 +329,7 @@ export default function OnboardingPage() {
             </div>
 
             <p style={{ fontSize: '0.8rem', color: '#888', lineHeight: '1.5' }}>
-              Your key is stored securely in your personal profile and never shared.
-              You can skip this for now if you'd like — the app may use a default key if one is configured.
+              {t('keyStored')}
             </p>
           </div>
         )}
@@ -339,7 +338,7 @@ export default function OnboardingPage() {
         <div style={s.navRow}>
           {step > 1 && (
             <button style={s.backBtn} onClick={() => setStep(s => s - 1)}>
-              Back
+              {t('back')}
             </button>
           )}
           <div style={{ flex: 1 }} />
@@ -349,7 +348,7 @@ export default function OnboardingPage() {
               disabled={step === 1 && !canProceed1}
               onClick={() => setStep(s => s + 1)}
             >
-              Next
+              {t('next')}
             </button>
           )}
           {step === 3 && (
@@ -358,7 +357,7 @@ export default function OnboardingPage() {
               disabled={saving}
               onClick={handleSubmit}
             >
-              {saving ? 'Saving...' : 'Finish setup'}
+              {saving ? t('finishing') : t('finishSetup')}
             </button>
           )}
         </div>
@@ -461,7 +460,7 @@ const s: { [k: string]: React.CSSProperties } = {
     transition: 'all 0.15s',
   },
   roleBtnActive: {
-    borderColor: '#1a73e8',
+    border: '1.5px solid #1a73e8',
     backgroundColor: '#e8f0fe',
     color: '#1a73e8',
     fontWeight: '600',
@@ -483,7 +482,7 @@ const s: { [k: string]: React.CSSProperties } = {
     transition: 'all 0.15s',
   },
   gradeBtnActive: {
-    borderColor: '#1a73e8',
+    border: '1.5px solid #1a73e8',
     backgroundColor: '#e8f0fe',
     color: '#1a73e8',
     fontWeight: '600',

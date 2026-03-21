@@ -7,6 +7,9 @@ from app.services.prompts import CHAT_SYSTEM_PROMPT, CONVERSATION_SUMMARY_PROMPT
 from app.services.student import StudentService
 from app.services.classroom import ClassroomService
 from app.services.linked_classes import LinkedClassService
+from app.services.pseudonymize import safe_student_for_llm, anonymize_text
+from app.services.database import get_db
+from app.services import audit
 
 settings = get_settings()
 
@@ -346,13 +349,27 @@ class ChatAgentService:
         self.teacher_user_id = teacher_user_id
         self.access_token = access_token
         self.client = None
+        self.model = "gpt-4o"
+        self.embedding_model = "text-embedding-3-small"
 
-        # Prefer user's own API key; fall back to env key
         from app.services.profile import ProfileService
-        user_key = ProfileService(teacher_user_id).get_api_key()
-        api_key = user_key or settings.openai_api_key
-        if api_key and api_key != "your-api-key-here":
-            self.client = OpenAI(api_key=api_key)
+        ps = ProfileService(teacher_user_id)
+        provider = ps.get_ai_provider()
+
+        if provider == "gemini":
+            gemini_key = ps.get_gemini_api_key()
+            if gemini_key:
+                self.client = OpenAI(
+                    api_key=gemini_key,
+                    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                )
+                self.model = "gemini-2.0-flash"
+                self.embedding_model = "text-embedding-004"
+        else:
+            user_key = ps.get_api_key()
+            api_key = user_key or settings.openai_api_key
+            if api_key and api_key != "your-api-key-here":
+                self.client = OpenAI(api_key=api_key)
 
     def _assemble_context(self, conversation_id: str, user_message: str) -> str:
         """Auto-gather context for the conversation."""
@@ -386,7 +403,8 @@ class ChatAgentService:
 
         # 2. Relevant memories
         try:
-            memories = memory.get_relevant_memories(self.teacher_user_id, user_message, limit=3)
+            memories = memory.get_relevant_memories(self.teacher_user_id, user_message, limit=3,
+                                                    embedding_client=self.client, embedding_model=self.embedding_model)
             memory_texts = []
             for ep in memories.get("episodic", []):
                 memory_texts.append(f"- [Past conversation] {ep['content'][:200]}")
@@ -514,7 +532,12 @@ class ChatAgentService:
                     for s in students:
                         s["summary"] = student_service.get_student_summary(s["id"])
 
-                return json.dumps(students, default=str)
+                # GDPR: strip name, email, notes before sending to OpenAI
+                safe = [safe_student_for_llm(s) for s in students]
+                ids = [s["id"] for s in students]
+                audit.log(self.teacher_user_id, audit.READ, "student",
+                          detail=f"tool=get_student_data class_id={class_id} ids={ids}")
+                return json.dumps(safe, default=str)
 
             elif tool_name == "get_class_assignments":
                 class_id = arguments["class_id"]
@@ -540,7 +563,10 @@ class ChatAgentService:
                     # Try importing from Classroom first
                     student_service.import_roster(self.access_token, class_id)
                     students = student_service.list_students(class_id)
-                return json.dumps([{"id": s["id"], "name": s["name"], "email": s.get("email", "")} for s in students], default=str)
+                # GDPR: include name for LLM name-resolution but strip email
+                audit.log(self.teacher_user_id, audit.LIST, "roster",
+                          detail=f"tool=get_class_roster class_id={class_id}")
+                return json.dumps([safe_student_for_llm(s, include_name=True) for s in students], default=str)
 
             elif tool_name == "post_assignment":
                 class_id = arguments["class_id"]
@@ -574,7 +600,8 @@ class ChatAgentService:
 
             elif tool_name == "search_memories":
                 query = arguments["query"]
-                results = memory.get_relevant_memories(self.teacher_user_id, query, limit=5)
+                results = memory.get_relevant_memories(self.teacher_user_id, query, limit=5,
+                                                       embedding_client=self.client, embedding_model=self.embedding_model)
                 formatted = []
                 for ep in results.get("episodic", []):
                     formatted.append({"type": "episodic", "content": ep["content"], "created_at": ep.get("created_at")})
@@ -751,7 +778,7 @@ class ChatAgentService:
         for round_num in range(max_tool_rounds):
             try:
                 stream = self.client.chat.completions.create(
-                    model="gpt-4o",
+                    model=self.model,
                     messages=messages,
                     tools=TOOL_DEFINITIONS,
                     stream=True,
@@ -887,7 +914,7 @@ class ChatAgentService:
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o",
+                model=self.model,
                 messages=[
                     {"role": "system", "content": CONVERSATION_SUMMARY_PROMPT},
                     {"role": "user", "content": conv_text[:10000]},
@@ -903,16 +930,31 @@ class ChatAgentService:
             tags = result.get("tags", [])
             title = result.get("title", "")
 
-            # End the conversation with summary and updated title
-            memory.end_conversation(conversation_id, summary=summary, tags=tags, title=title or None)
+            # GDPR: anonymize student names in summary before storing/embedding
+            db = get_db()
+            try:
+                all_students = [
+                    dict(r) for r in db.execute(
+                        "SELECT id, name FROM students WHERE teacher_user_id = ?",
+                        (self.teacher_user_id,),
+                    ).fetchall()
+                ]
+            finally:
+                db.close()
+            anon_summary = anonymize_text(summary, all_students)
 
-            # Save as episodic memory
+            # End the conversation with summary and updated title
+            memory.end_conversation(conversation_id, summary=anon_summary, tags=tags, title=title or None)
+
+            # Save anonymized summary as episodic memory
             memory.save_episodic_memory(
                 self.teacher_user_id,
-                content=summary,
+                content=anon_summary,
                 conversation_id=conversation_id,
                 tags=tags,
                 memory_type="conversation_summary",
+                embedding_client=self.client,
+                embedding_model=self.embedding_model,
             )
 
             # Save any strategies mentioned
@@ -931,6 +973,8 @@ class ChatAgentService:
                     conversation_id=conversation_id,
                     tags=["preference"],
                     memory_type="teacher_preference",
+                    embedding_client=self.client,
+                    embedding_model=self.embedding_model,
                 )
 
             return {"summary": summary, "tags": tags}

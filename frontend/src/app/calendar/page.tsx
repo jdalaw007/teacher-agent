@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import { useTranslations } from 'next-intl'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -56,6 +57,8 @@ function groupByDay(events: CalEvent[]): { label: string; events: CalEvent[] }[]
 
 export default function CalendarPage() {
   const router = useRouter()
+  const t = useTranslations('calendar')
+  const tCommon = useTranslations('common')
   const [events, setEvents] = useState<CalEvent[] | null>(null)
   const [error, setError] = useState('')
   const [daysAhead, setDaysAhead] = useState(14)
@@ -87,8 +90,8 @@ export default function CalendarPage() {
       <div style={s.body}>
         <div style={s.header}>
           <div>
-            <h1 style={s.title}>Calendar</h1>
-            <p style={s.sub}>Upcoming events from your Google Calendar</p>
+            <h1 style={s.title}>{t('title')}</h1>
+            <p style={s.sub}>{t('sub')}</p>
           </div>
           <div style={s.rangeRow}>
             {[7, 14, 30].map(d => (
@@ -97,14 +100,14 @@ export default function CalendarPage() {
                 style={{ ...s.rangeBtn, ...(daysAhead === d ? s.rangeBtnActive : {}) }}
                 onClick={() => setDaysAhead(d)}
               >
-                {d === 7 ? '1 week' : d === 14 ? '2 weeks' : '1 month'}
+                {d === 7 ? t('oneWeek') : d === 14 ? t('twoWeeks') : t('oneMonth')}
               </button>
             ))}
           </div>
         </div>
 
         {events === null && !error && (
-          <div style={s.center}><span style={{ color: '#aaa' }}>Loading...</span></div>
+          <div style={s.center}><span style={{ color: '#aaa' }}>{tCommon('loading')}</span></div>
         )}
 
         {error && (
@@ -114,13 +117,13 @@ export default function CalendarPage() {
               <line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" />
               <line x1="3" y1="10" x2="21" y2="10" />
             </svg>
-            <div style={s.emptyTitle}>Could not load calendar</div>
+            <div style={s.emptyTitle}>{t('couldNotLoad')}</div>
             <div style={s.emptyHint}>{error}</div>
             <button
               style={s.reloginBtn}
               onClick={() => { localStorage.removeItem('token'); window.location.href = `${API_URL}/auth/login` }}
             >
-              Sign in again to enable
+              {t('signInAgain')}
             </button>
           </div>
         )}
@@ -132,8 +135,8 @@ export default function CalendarPage() {
               <line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" />
               <line x1="3" y1="10" x2="21" y2="10" />
             </svg>
-            <div style={s.emptyTitle}>No upcoming events</div>
-            <div style={s.emptyHint}>Nothing scheduled in the next {daysAhead} days.</div>
+            <div style={s.emptyTitle}>{t('noEvents')}</div>
+            <div style={s.emptyHint}>{t('noEventsHint', { days: daysAhead })}</div>
           </div>
         )}
 
@@ -150,7 +153,7 @@ export default function CalendarPage() {
                     <div style={s.eventBody}>
                       <div style={s.eventTitle}>{ev.title}</div>
                       <div style={s.eventTime}>
-                        {ev.all_day ? 'All day' : formatEventTime(ev.start, false).split('·')[1]?.trim()}
+                        {ev.all_day ? t('allDay') : formatEventTime(ev.start, false).split('·')[1]?.trim()}
                       </div>
                       {ev.location && (
                         <div style={s.eventMeta}>{ev.location}</div>
@@ -161,7 +164,7 @@ export default function CalendarPage() {
                     </div>
                     {ev.html_link && (
                       <a href={ev.html_link} target="_blank" rel="noopener noreferrer" style={s.openLink}>
-                        Open
+                        {t('open')}
                       </a>
                     )}
                   </div>

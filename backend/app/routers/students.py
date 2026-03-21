@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from app.services.student import StudentService
 from app.services.token_store import get_user_id_from_token
+from app.services import audit
 
 router = APIRouter()
 
@@ -69,10 +70,10 @@ async def list_students(class_id: str, request: Request):
     user_id = get_user_id_from_request(request)
     service = StudentService(user_id)
     students = service.list_students(class_id)
-    # Enrich each student with summary stats and groups
     for student in students:
         student["summary"] = service.get_student_summary(student["id"])
         student["groups"] = service.get_student_groups(student["id"])
+    audit.log(user_id, audit.LIST, "student", detail=f"class_id={class_id} count={len(students)}")
     return {"students": students}
 
 
@@ -82,9 +83,9 @@ async def import_roster(body: ImportRosterRequest, request: Request):
     user_id = get_user_id_from_request(request)
     access_token = get_token_from_request(request)
     service = StudentService(user_id)
-
     try:
         result = service.import_roster(access_token, body.class_id)
+        audit.log(user_id, audit.IMPORT, "roster", detail=f"class_id={body.class_id} imported={result.get('imported')}")
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -98,6 +99,7 @@ async def sync_submissions(body: SyncSubmissionsRequest, request: Request):
     service = StudentService(user_id)
     try:
         result = service.sync_submissions(access_token, body.class_id)
+        audit.log(user_id, audit.SYNC, "submission_history", detail=f"class_id={body.class_id} synced={result.get('synced')}")
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -191,6 +193,7 @@ async def get_student(student_id: int, request: Request):
     student = service.get_student(student_id)
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
+    audit.log(user_id, audit.READ, "student", resource_id=student_id)
     return student
 
 
@@ -202,6 +205,8 @@ async def update_student(student_id: int, body: UpdateStudentRequest, request: R
     student = service.update_student(student_id, name=body.name, email=body.email, notes=body.notes)
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
+    fields = [f for f, v in [("name", body.name), ("email", body.email), ("notes", body.notes)] if v is not None]
+    audit.log(user_id, audit.UPDATE, "student", resource_id=student_id, detail=f"fields={','.join(fields)}")
     return student
 
 
@@ -213,6 +218,7 @@ async def update_notes(student_id: int, body: UpdateNotesRequest, request: Reque
     student = service.update_notes(student_id, body.notes)
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
+    audit.log(user_id, audit.UPDATE, "student", resource_id=student_id, detail="fields=notes")
     return student
 
 
@@ -224,6 +230,7 @@ async def delete_student(student_id: int, request: Request):
     success = service.delete_student(student_id)
     if not success:
         raise HTTPException(status_code=404, detail="Student not found")
+    audit.log(user_id, audit.DELETE, "student", resource_id=student_id)
     return {"deleted": True}
 
 
@@ -233,4 +240,5 @@ async def get_student_history(student_id: int, request: Request):
     user_id = get_user_id_from_request(request)
     service = StudentService(user_id)
     history = service.get_student_history(student_id)
+    audit.log(user_id, audit.READ, "submission_history", resource_id=student_id)
     return {"history": history}

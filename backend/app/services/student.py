@@ -165,11 +165,8 @@ class StudentService:
 
             for row in rows:
                 student = dict(row)
-                section = f"Student Profile:\nName: {student['name']}"
-                if student.get("email"):
-                    section += f"\nEmail: {student['email']}"
-                if student.get("notes"):
-                    section += f"\nTeacher Notes: {student['notes']}"
+                # GDPR: omit email; notes may contain SEN/health data — omit
+                section = f"Student Profile:\nRef: st_{student['id']}"
                 parts.append(section)
 
             result = "\n\n".join(parts)

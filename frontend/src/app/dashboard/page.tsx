@@ -1,10 +1,16 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import { useTranslations } from 'next-intl'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
+const LANG_CODES: Record<string, string> = {
+  English: 'en-US', Czech: 'cs-CZ', Slovak: 'sk-SK', Russian: 'ru-RU',
+  Spanish: 'es-ES', French: 'fr-FR', German: 'de-DE', Polish: 'pl-PL',
+}
 
 interface Message {
   role: 'user' | 'assistant'
@@ -38,16 +44,7 @@ interface Course {
   name: string
 }
 
-const TOOL_LABELS: Record<string, string> = {
-  search_corpus: 'Searching documents...',
-  get_student_data: 'Looking up student data...',
-  get_class_assignments: 'Fetching assignments...',
-  get_class_roster: 'Loading class roster...',
-  post_assignment: 'Posting assignment...',
-  post_announcement: 'Posting announcement...',
-  search_memories: 'Searching past conversations...',
-  log_strategy: 'Logging strategy...',
-}
+// TOOL_LABELS now built dynamically inside component using translations
 
 const FALLBACK_PROMPTS = [
   'How are my students doing on recent assignments?',
@@ -55,6 +52,7 @@ const FALLBACK_PROMPTS = [
   'Create a formative assessment quiz',
   'What differentiation strategies should I try?',
 ]
+
 
 function formatEmailDate(dateStr: string): string {
   if (!dateStr) return ''
@@ -70,6 +68,19 @@ function formatEmailDate(dateStr: string): string {
 export default function Dashboard() {
   const searchParams = useSearchParams()
   const router = useRouter()
+  const t = useTranslations('dashboard')
+  const tCommon = useTranslations('common')
+
+  const TOOL_LABELS: Record<string, string> = {
+    search_corpus: t('toolSearchCorpus'),
+    get_student_data: t('toolGetStudentData'),
+    get_class_assignments: t('toolGetAssignments'),
+    get_class_roster: t('toolGetRoster'),
+    post_assignment: t('toolPostAssignment'),
+    post_announcement: t('toolPostAnnouncement'),
+    search_memories: t('toolSearchMemories'),
+    log_strategy: t('toolLogStrategy'),
+  }
 
   const [user, setUser] = useState<{ name: string; email: string } | null>(null)
   const [token, setToken] = useState<string | null>(null)
@@ -96,8 +107,13 @@ export default function Dashboard() {
   const [feedbackSent, setFeedbackSent] = useState(false)
   const [feedbackSending, setFeedbackSending] = useState(false)
 
+  const [listening, setListening] = useState(false)
+  const [voiceSupported, setVoiceSupported] = useState(false)
+  const [langCode, setLangCode] = useState('cs-CZ')
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const recognitionRef = useRef<any>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -112,13 +128,19 @@ export default function Dashboard() {
       return
     }
 
+    setVoiceSupported(!!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition))
+
     const t = localStorage.getItem('token')
     if (!t) { router.push('/'); return }
     setToken(t)
 
     fetch(`${API_URL}/onboarding/profile`, { headers: { Authorization: `Bearer ${t}` } })
       .then(r => r.json())
-      .then(d => { if (!d.onboarding_complete) router.push('/onboarding') })
+      .then(d => {
+        if (!d.onboarding_complete) router.push('/onboarding')
+        if (d.language && LANG_CODES[d.language]) setLangCode(LANG_CODES[d.language])
+        if (d.language) localStorage.setItem('language', d.language)
+      })
       .catch(() => {})
 
     fetch(`${API_URL}/auth/user`, { headers: { Authorization: `Bearer ${t}` } })
@@ -151,13 +173,61 @@ export default function Dashboard() {
   useEffect(() => {
     if (!user) return
     const first = user.name?.split(' ')[0] || ''
-    setGreetingText(`Hi ${first}, where should we start?`)
-  }, [user])
+    setGreetingText(t('greeting', { name: first }))
+  }, [user, t])
+
+  const stopListening = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+      recognitionRef.current = null
+    }
+    setListening(false)
+  }, [])
+
+  const startListening = useCallback(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) return
+    const recognition = new SpeechRecognition()
+    recognition.lang = langCode
+    recognition.continuous = false
+    recognition.interimResults = true
+    recognitionRef.current = recognition
+
+    recognition.onstart = () => setListening(true)
+
+    recognition.onresult = (e: any) => {
+      const transcript = Array.from(e.results as any[])
+        .map((r: any) => r[0].transcript)
+        .join('')
+      setInputValue(transcript)
+    }
+
+    recognition.onend = () => {
+      setListening(false)
+      recognitionRef.current = null
+      setInputValue(prev => {
+        if (prev.trim()) {
+          setTimeout(() => {
+            document.getElementById('dashboard-send-btn')?.click()
+          }, 100)
+        }
+        return prev
+      })
+    }
+
+    recognition.onerror = () => {
+      setListening(false)
+      recognitionRef.current = null
+    }
+
+    recognition.start()
+  }, [langCode])
 
   const sendMessage = async (text?: string) => {
     const msg = (text || inputValue).trim()
     if (!msg || !token || isStreaming) return
 
+    stopListening()
     setInputValue('')
     setMessages(prev => [...prev, { role: 'user', content: msg }])
     setIsStreaming(true)
@@ -209,7 +279,7 @@ export default function Dashboard() {
       if (fullContent) setMessages(prev => [...prev, { role: 'assistant', content: fullContent }])
       setStreamingContent('')
     } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Something went wrong. Please try again.' }])
+      setMessages(prev => [...prev, { role: 'assistant', content: tCommon('error') }])
       setStreamingContent('')
     } finally {
       setIsStreaming(false)
@@ -222,7 +292,7 @@ export default function Dashboard() {
   }
 
   const submissionsByClass = submissions.reduce((acc, s) => {
-    const name = courses.find(c => c.id === s.class_id)?.name || 'Unknown Class'
+    const name = courses.find(c => c.id === s.class_id)?.name || tCommon('unknownClass')
     acc[name] = (acc[name] || 0) + 1
     return acc
   }, {} as Record<string, number>)
@@ -237,7 +307,7 @@ export default function Dashboard() {
         {/* Chat Panel */}
         <div style={styles.chatPanel}>
           <div style={styles.chatHeader}>
-            <span style={styles.chatTitle}>Teacher Agent</span>
+            <span style={styles.chatTitle}>{t('chatTitle')}</span>
           </div>
 
           <div style={styles.messagesArea}>
@@ -248,7 +318,7 @@ export default function Dashboard() {
                   <div style={styles.greetingText}>{greetingText}</div>
                 )}
                 <div style={styles.suggestedSection}>
-                  <div style={styles.suggestedLabel}>Suggested prompts</div>
+                  <div style={styles.suggestedLabel}>{t('suggestedLabel')}</div>
                   <div style={styles.suggestedBtns}>
                     {suggestedPrompts.map((p, i) => (
                       <button key={i} onClick={() => sendMessage(p)} style={styles.suggestedBtn}>
@@ -298,12 +368,28 @@ export default function Dashboard() {
               value={inputValue}
               onChange={e => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type a command or ask a question..."
+              placeholder={voiceSupported ? t('placeholderVoice') : t('placeholderText')}
               disabled={isStreaming}
               style={styles.textarea}
               rows={1}
             />
+            {voiceSupported && (
+              <button
+                onClick={() => listening ? stopListening() : startListening()}
+                disabled={isStreaming}
+                title={listening ? t('listeningStop') : t('listenSpeak')}
+                style={{ ...styles.micBtn, background: listening ? '#ea4335' : '#f1f3f4', opacity: isStreaming ? 0.4 : 1 }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill={listening ? '#fff' : '#555'}>
+                  <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
+                  <path d="M19 10a7 7 0 0 1-14 0" stroke={listening ? '#fff' : '#555'} strokeWidth="2" fill="none" strokeLinecap="round"/>
+                  <line x1="12" y1="19" x2="12" y2="23" stroke={listening ? '#fff' : '#555'} strokeWidth="2" strokeLinecap="round"/>
+                  <line x1="8" y1="23" x2="16" y2="23" stroke={listening ? '#fff' : '#555'} strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+              </button>
+            )}
             <button
+              id="dashboard-send-btn"
               onClick={() => sendMessage()}
               disabled={!inputValue.trim() || isStreaming}
               style={{ ...styles.sendBtn, opacity: !inputValue.trim() || isStreaming ? 0.4 : 1 }}
@@ -318,7 +404,7 @@ export default function Dashboard() {
 
         {/* Live Feed */}
         <div style={styles.liveFeed}>
-          <div style={styles.liveFeedTitle}>Live Feed</div>
+          <div style={styles.liveFeedTitle}>{t('liveFeed')}</div>
 
           {/* Inbox */}
           <div style={styles.card}>
@@ -327,22 +413,22 @@ export default function Dashboard() {
                 <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
                 <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
               </svg>
-              <span style={styles.cardLabel}>INBOX</span>
+              <span style={styles.cardLabel}>{t('inbox')}</span>
             </div>
             {emails === null && !emailsError ? (
-              <p style={styles.cardHint}>Loading...</p>
+              <p style={styles.cardHint}>{tCommon('loading')}</p>
             ) : emailsError ? (
               <div>
-                <p style={styles.cardHint}>Gmail not connected.</p>
+                <p style={styles.cardHint}>{t('gmailNotConnected')}</p>
                 <button
                   style={styles.reloginBtn}
                   onClick={() => { localStorage.removeItem('token'); window.location.href = `${API_URL}/auth/login` }}
                 >
-                  Sign in again to enable
+                  {t('signInAgain')}
                 </button>
               </div>
             ) : emails!.length === 0 ? (
-              <p style={styles.cardHint}>No recent emails</p>
+              <p style={styles.cardHint}>{t('noRecentEmails')}</p>
             ) : (
               emails!.map(em => (
                 <div key={em.id} style={styles.feedRow}>
@@ -371,9 +457,9 @@ export default function Dashboard() {
                 <line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" />
                 <line x1="3" y1="10" x2="21" y2="10" />
               </svg>
-              <span style={styles.cardLabel}>CALENDAR</span>
+              <span style={styles.cardLabel}>{t('calendar')}</span>
             </div>
-            <p style={styles.cardHint}>Google Calendar — coming soon</p>
+            <p style={styles.cardHint}>{t('calendarComingSoon')}</p>
           </div>
 
           {/* Suggestion Box */}
@@ -382,17 +468,17 @@ export default function Dashboard() {
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
               </svg>
-              <span style={styles.cardLabel}>SUGGESTION BOX</span>
+              <span style={styles.cardLabel}>{t('suggestionBox')}</span>
             </div>
             {feedbackSent ? (
-              <p style={{ ...styles.cardHint, color: '#34a853' }}>Thanks for your feedback!</p>
+              <p style={{ ...styles.cardHint, color: '#34a853' }}>{t('feedbackSent')}</p>
             ) : feedbackOpen ? (
               <div>
                 <textarea
                   autoFocus
                   value={feedbackText}
                   onChange={e => setFeedbackText(e.target.value)}
-                  placeholder="Share a suggestion or report an issue..."
+                  placeholder={t('feedbackPlaceholder')}
                   style={styles.feedbackTextarea}
                   rows={3}
                 />
@@ -417,19 +503,19 @@ export default function Dashboard() {
                       }
                     }}
                   >
-                    {feedbackSending ? 'Sending...' : 'Send'}
+                    {feedbackSending ? tCommon('sending') : t('feedbackSend')}
                   </button>
                   <button
                     style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', color: '#aaa' }}
                     onClick={() => { setFeedbackOpen(false); setFeedbackText('') }}
                   >
-                    Cancel
+                    {t('feedbackCancel')}
                   </button>
                 </div>
               </div>
             ) : (
               <button style={styles.reloginBtn} onClick={() => setFeedbackOpen(true)}>
-                Leave a suggestion
+                {t('leaveSuggestion')}
               </button>
             )}
           </div>
@@ -443,16 +529,16 @@ export default function Dashboard() {
                 <rect x="6" y="12" width="12" height="1.5" rx="0.75" fill="white" />
                 <rect x="6" y="16" width="7" height="1.5" rx="0.75" fill="white" />
               </svg>
-              <span style={styles.cardLabel}>GOOGLE CLASSROOM</span>
+              <span style={styles.cardLabel}>{t('googleClassroom')}</span>
             </div>
             {Object.keys(submissionsByClass).length === 0 ? (
-              <p style={styles.cardHint}>No new submissions</p>
+              <p style={styles.cardHint}>{t('noNewSubmissions')}</p>
             ) : (
               Object.entries(submissionsByClass).map(([name, count]) => (
                 <div key={name} style={styles.feedRow}>
                   <span style={{ fontWeight: 600, color: '#333', fontSize: '0.85rem' }}>{name}: </span>
                   <span style={{ color: '#555', fontSize: '0.85rem' }}>
-                    {count} new submission{count !== 1 ? 's' : ''}
+                    {count !== 1 ? t('newSubmissions', { count }) : t('newSubmission', { count })}
                   </span>
                 </div>
               ))
@@ -615,6 +701,18 @@ const styles: { [key: string]: React.CSSProperties } = {
     minHeight: '42px',
     maxHeight: '120px',
     backgroundColor: '#f8f9fa',
+  },
+  micBtn: {
+    width: '38px',
+    height: '38px',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    transition: 'background 0.15s',
   },
   sendBtn: {
     width: '42px',

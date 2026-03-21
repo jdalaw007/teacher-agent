@@ -226,6 +226,17 @@ def init_db():
         "ALTER TABLE user_profiles ADD COLUMN last_login_at TEXT",
         "ALTER TABLE teacher_tokens ADD COLUMN access_token TEXT",
         "ALTER TABLE user_profiles ADD COLUMN language TEXT DEFAULT 'English'",
+        """CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT DEFAULT (datetime('now')),
+            teacher_user_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            resource_type TEXT NOT NULL,
+            resource_id TEXT,
+            detail TEXT
+        )""",
+        "ALTER TABLE user_profiles ADD COLUMN gemini_api_key TEXT DEFAULT ''",
+        "ALTER TABLE user_profiles ADD COLUMN ai_provider TEXT DEFAULT 'openai'",
     ]:
         try:
             conn.execute(migration)

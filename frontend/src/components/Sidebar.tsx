@@ -2,6 +2,7 @@
 
 import { useRouter, usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { useTranslations } from 'next-intl'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -9,6 +10,7 @@ export default function Sidebar() {
   const router = useRouter()
   const pathname = usePathname() || ''
   const [avatar, setAvatar] = useState<{ picture?: string; name?: string; email?: string } | null>(null)
+  const t = useTranslations('nav')
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -23,11 +25,11 @@ export default function Sidebar() {
     pathname === path || (path !== '/dashboard' && pathname.startsWith(path))
 
   const navItems = [
-    { label: 'Dashboard', path: '/dashboard', icon: <GridIcon /> },
-    { label: 'Classes', path: '/classes', icon: <BookIcon /> },
-    { label: 'My Files', path: '/files', icon: <FolderIcon /> },
-    { label: 'Inbox', path: '/inbox', icon: <InboxIcon /> },
-    { label: 'Calendar', path: '/calendar', icon: <CalendarIcon /> },
+    { label: t('dashboard'), path: '/dashboard', icon: <GridIcon /> },
+    { label: t('classes'), path: '/classes', icon: <BookIcon /> },
+    { label: t('files'), path: '/files', icon: <FolderIcon /> },
+    { label: t('inbox'), path: '/inbox', icon: <InboxIcon /> },
+    { label: t('calendar'), path: '/calendar', icon: <CalendarIcon /> },
   ]
 
   return (
@@ -39,15 +41,15 @@ export default function Sidebar() {
       <button
         onClick={() => router.push('/settings')}
         style={{ ...s.btn, ...(pathname === '/settings' ? s.btnActive : {}), marginBottom: '8px' }}
-        title={avatar?.name || 'Profile'}
+        title={avatar?.name || t('profile')}
       >
         <div style={s.avatarWrap}>
           {avatar?.picture
-            ? <img src={avatar.picture} alt={avatar.name || 'Profile'} style={s.avatarImg} referrerPolicy="no-referrer" />
+            ? <img src={avatar.picture} alt={avatar.name || t('profile')} style={s.avatarImg} referrerPolicy="no-referrer" />
             : <div style={s.avatarInitials}>{avatar?.name ? avatar.name[0].toUpperCase() : <PersonIcon />}</div>
           }
         </div>
-        <span style={{ ...s.lbl, color: pathname === '/settings' ? '#fff' : '#9aa0a6' }}>Profile</span>
+        <span style={{ ...s.lbl, color: pathname === '/settings' ? '#fff' : '#9aa0a6' }}>{t('profile')}</span>
       </button>
 
       <nav style={s.nav}>
@@ -72,26 +74,26 @@ export default function Sidebar() {
           <button
             onClick={() => router.push('/admin')}
             style={{ ...s.btn, ...(pathname === '/admin' ? s.btnActive : {}) }}
-            title="Admin"
+            title={t('admin')}
           >
             <span style={{ color: pathname === '/admin' ? '#fff' : '#9aa0a6' }}>
               <ShieldIcon />
             </span>
             <span style={{ ...s.lbl, color: pathname === '/admin' ? '#fff' : '#9aa0a6' }}>
-              Admin
+              {t('admin')}
             </span>
           </button>
         )}
         <button
           onClick={() => router.push('/settings')}
           style={{ ...s.btn, ...(pathname === '/settings' ? s.btnActive : {}) }}
-          title="Settings"
+          title={t('settings')}
         >
           <span style={{ color: pathname === '/settings' ? '#fff' : '#9aa0a6' }}>
             <GearIcon />
           </span>
           <span style={{ ...s.lbl, color: pathname === '/settings' ? '#fff' : '#9aa0a6' }}>
-            Settings
+            {t('settings')}
           </span>
         </button>
       </div>

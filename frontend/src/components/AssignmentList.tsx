@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -38,6 +39,8 @@ interface AssignmentListProps {
 }
 
 export default function AssignmentList({ assignments, courseId, students = [], onGrade, onGradeStudent }: AssignmentListProps) {
+  const t = useTranslations('assignmentList')
+  const tCommon = useTranslations('common')
   const studentByUserId = Object.fromEntries(
     students.filter(s => s.classroom_user_id).map(s => [s.classroom_user_id!, s.name])
   )
@@ -71,7 +74,7 @@ export default function AssignmentList({ assignments, courseId, students = [], o
   if (assignments.length === 0) {
     return (
       <div style={styles.empty}>
-        <p>No assignments found for this class.</p>
+        <p>{t('noAssignments')}</p>
       </div>
     )
   }
@@ -128,7 +131,7 @@ export default function AssignmentList({ assignments, courseId, students = [], o
       const data = await res.json()
       setSubmissions(data.submissions || [])
     } catch {
-      setSubmissionsError('Failed to load submissions.')
+      setSubmissionsError(t('failedToLoadSubmissions'))
     } finally {
       setLoadingSubmissions(false)
     }
@@ -157,7 +160,7 @@ export default function AssignmentList({ assignments, courseId, students = [], o
                   onClick={e => { e.stopPropagation(); onGrade(assignment) }}
                   style={styles.gradeBtn}
                 >
-                  Grade with AI
+                  {t('gradeWithAI')}
                 </button>
               )}
             </div>
@@ -165,22 +168,22 @@ export default function AssignmentList({ assignments, courseId, students = [], o
           {assignment.description && (
             <p style={styles.description}>{assignment.description}</p>
           )}
-          {assignment.dueDate && (
-            <p style={styles.dueDate}>Due: {formatDate(assignment.dueDate)}</p>
+          {assignment.dueDate && formatDate(assignment.dueDate) && (
+            <p style={styles.dueDate}>{t('due', { date: formatDate(assignment.dueDate)! })}</p>
           )}
           <p style={styles.viewHint}>
-            {expandedId === assignment.id ? 'Click to collapse' : 'Click to view submissions'}
+            {expandedId === assignment.id ? t('clickToCollapse') : t('clickToView')}
           </p>
 
           {expandedId === assignment.id && (
             <div style={styles.submissionsPanel} onClick={(e) => e.stopPropagation()}>
-              <h5 style={styles.submissionsTitle}>Student Submissions</h5>
+              <h5 style={styles.submissionsTitle}>{t('studentSubmissions')}</h5>
               {loadingSubmissions ? (
-                <p style={styles.loadingText}>Loading submissions...</p>
+                <p style={styles.loadingText}>{t('loadingSubmissions')}</p>
               ) : submissionsError ? (
                 <p style={styles.errorText}>{submissionsError}</p>
               ) : submissions.length === 0 ? (
-                <p style={styles.emptySubmissions}>No submissions yet.</p>
+                <p style={styles.emptySubmissions}>{t('noSubmissions')}</p>
               ) : (
                 <div style={styles.submissionsList}>
                   {submissions.map((sub) => (
@@ -211,9 +214,9 @@ export default function AssignmentList({ assignments, courseId, students = [], o
                         }}>
                           {formatState(sub.state)}
                         </span>
-                        {sub.late && <span style={styles.lateBadge}>Late</span>}
+                        {sub.late && <span style={styles.lateBadge}>{t('late')}</span>}
                         {sub.assignedGrade != null && (
-                          <span style={styles.grade}>Grade: {sub.assignedGrade}</span>
+                          <span style={styles.grade}>{t('grade', { grade: sub.assignedGrade })}</span>
                         )}
                         {sub.updateTime && (
                           <span style={styles.submissionTime}>
@@ -223,7 +226,7 @@ export default function AssignmentList({ assignments, courseId, students = [], o
                         )}
                         {(sub.state === 'TURNED_IN' || sub.state === 'RETURNED') && (
                           <span style={styles.viewWorkHint}>
-                            {previewUserId === sub.userId ? 'hide' : 'view work'}
+                            {previewUserId === sub.userId ? t('hideWork') : t('viewWork')}
                           </span>
                         )}
                         {onGradeStudent && (sub.state === 'TURNED_IN' || sub.state === 'RETURNED') && (
@@ -236,14 +239,14 @@ export default function AssignmentList({ assignments, courseId, students = [], o
                               onGradeStudent(assignment, sub.userId, name)
                             }}
                           >
-                            Grade
+                            {t('gradeStudent')}
                           </button>
                         )}
                       </div>
                       {previewUserId === sub.userId && (
                         <div style={styles.previewBox}>
                           {previewLoading
-                            ? <span style={{ color: '#aaa', fontSize: '0.85rem' }}>Loading...</span>
+                            ? <span style={{ color: '#aaa', fontSize: '0.85rem' }}>{tCommon('loading')}</span>
                             : <pre style={styles.previewText}>{previewText}</pre>
                           }
                         </div>

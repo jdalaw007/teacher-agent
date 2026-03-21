@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import { useTranslations } from 'next-intl'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -39,6 +40,8 @@ interface StudentGroup {
 export default function AgentPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const t = useTranslations('agent')
+  const tCommon = useTranslations('common')
   const [activeTab, setActiveTab] = useState<'generate' | 'schedule'>('generate')
   const [courses, setCourses] = useState<Course[]>([])
   const [selectedClassId, setSelectedClassId] = useState<string>('')
@@ -262,16 +265,16 @@ export default function AgentPage() {
       })
 
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Assignment saved!' })
+        setMessage({ type: 'success', text: t('assignmentSaved') })
         setShowSaveModal(false)
         setPendingSaveContent(null)
         fetchSavedAssignments()
       } else {
         const err = await res.json()
-        setMessage({ type: 'error', text: err.detail || 'Save failed' })
+        setMessage({ type: 'error', text: err.detail || t('saveFailed') })
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Save failed' })
+      setMessage({ type: 'error', text: t('saveFailed') })
     } finally {
       setLoading(false)
     }
@@ -290,19 +293,19 @@ export default function AgentPage() {
         setAssignmentType(data.type || 'worksheet')
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to load assignment' })
+      setMessage({ type: 'error', text: t('failedLoad') })
     }
   }
 
   const deleteAssignment = async (assignId: string) => {
-    if (!confirm('Delete this assignment?')) return
+    if (!confirm(t('confirmDeleteAssignment'))) return
     try {
       const res = await fetch(`${API_URL}/assignments/${assignId}?class_id=${selectedClassId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       })
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Assignment deleted' })
+        setMessage({ type: 'success', text: t('assignmentDeleted') })
         if (selectedAssignmentId === assignId) {
           setSelectedAssignmentId(null)
           setGeneratedAssignment('')
@@ -310,7 +313,7 @@ export default function AgentPage() {
         fetchSavedAssignments()
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Delete failed' })
+      setMessage({ type: 'error', text: t('deleteFailed') })
     }
   }
 
@@ -336,11 +339,11 @@ export default function AgentPage() {
           body: JSON.stringify({ text: generatedAssignment }),
         })
         if (res.ok) {
-          setMessage({ type: 'success', text: 'Announcement posted to Classroom stream!' })
+          setMessage({ type: 'success', text: t('announcementPosted') })
           setShowPostModal(false)
         } else {
           const err = await res.json()
-          setMessage({ type: 'error', text: err.detail || 'Failed to post announcement' })
+          setMessage({ type: 'error', text: err.detail || t('failedPostAnnouncement') })
         }
       } else {
         // Post as assignment
@@ -370,16 +373,16 @@ export default function AgentPage() {
         if (res.ok) {
           setMessage({
             type: 'success',
-            text: postAsDraft ? 'Assignment saved as draft in Google Classroom!' : 'Assignment posted to Google Classroom!',
+            text: postAsDraft ? t('assignmentDrafted') : t('assignmentPosted'),
           })
           setShowPostModal(false)
         } else {
           const err = await res.json()
-          setMessage({ type: 'error', text: err.detail || 'Failed to post to Classroom' })
+          setMessage({ type: 'error', text: err.detail || t('failedPostClassroom') })
         }
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to post to Classroom' })
+      setMessage({ type: 'error', text: t('failedPostClassroom') })
     } finally {
       setLoading(false)
     }
@@ -410,17 +413,17 @@ export default function AgentPage() {
         }),
       })
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Scheduled post created!' })
+        setMessage({ type: 'success', text: t('scheduledCreated') })
         setShowScheduleForm(false)
         setSchedTitle('')
         setSchedContent('')
         fetchScheduledPosts()
       } else {
         const err = await res.json()
-        setMessage({ type: 'error', text: err.detail || 'Failed to create scheduled post' })
+        setMessage({ type: 'error', text: err.detail || t('scheduleCreateFailed') })
       }
     } catch {
-      setMessage({ type: 'error', text: 'Failed to create scheduled post' })
+      setMessage({ type: 'error', text: t('scheduleCreateFailed') })
     } finally {
       setLoading(false)
     }
@@ -454,24 +457,24 @@ export default function AgentPage() {
       if (res.ok) {
         setEditingPostId(null)
         fetchScheduledPosts()
-        setMessage({ type: 'success', text: 'Post updated' })
+        setMessage({ type: 'success', text: t('postUpdated') })
       }
     } catch {}
   }
 
   const handleDeleteSchedule = async (postId: number) => {
-    if (!confirm('Delete this scheduled post?')) return
+    if (!confirm(t('confirmDeleteScheduled'))) return
     try {
       const res = await fetch(`${API_URL}/scheduled-posts/${postId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       })
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Scheduled post deleted' })
+        setMessage({ type: 'success', text: t('scheduledDeleted') })
         fetchScheduledPosts()
       }
     } catch {
-      setMessage({ type: 'error', text: 'Delete failed' })
+      setMessage({ type: 'error', text: t('deleteFailed') })
     }
   }
 
@@ -496,14 +499,14 @@ export default function AgentPage() {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Posted successfully!' })
+        setMessage({ type: 'success', text: t('postedSuccessfully') })
         fetchScheduledPosts()
       } else {
         const err = await res.json()
-        setMessage({ type: 'error', text: err.detail || 'Failed to post' })
+        setMessage({ type: 'error', text: err.detail || t('failedPost') })
       }
     } catch {
-      setMessage({ type: 'error', text: 'Failed to post' })
+      setMessage({ type: 'error', text: t('failedPost') })
     } finally {
       setLoading(false)
     }
@@ -552,7 +555,7 @@ export default function AgentPage() {
       }
       setCheckStatus('done')
     } catch {
-      setCheckResult('Content check failed. Please try again.')
+      setCheckResult(t('contentCheckFailed'))
       setCheckStatus('done')
     }
   }
@@ -704,7 +707,7 @@ export default function AgentPage() {
     setGeneratedAssignment('')
     setCheckResult('')
     setCheckStatus('idle')
-    setLoadingStatus('Searching documents...')
+    setLoadingStatus(t('statusSearching'))
     setLoadingProgress(10)
 
     // Simulate progress while waiting for API
@@ -718,7 +721,7 @@ export default function AgentPage() {
     }, 500)
 
     // Update status after a moment
-    setTimeout(() => setLoadingStatus('Generating assignment...'), 1500)
+    setTimeout(() => setLoadingStatus(t('statusGenerating')), 1500)
     setTimeout(() => setLoadingProgress(40), 2000)
 
     try {
@@ -743,22 +746,22 @@ export default function AgentPage() {
 
       clearInterval(progressInterval)
       setLoadingProgress(100)
-      setLoadingStatus('Complete!')
+      setLoadingStatus(t('statusComplete'))
 
       if (res.ok) {
         const data = await res.json()
         console.log('Generate response:', data)
-        setGeneratedAssignment(data.assignment || 'No content generated')
+        setGeneratedAssignment(data.assignment || t('noContentGenerated'))
         setSelectedAssignmentId(null)
-        const savedNote = data.saved_filename ? ` Saved to My Files as "${data.saved_filename}".` : ''
-        setMessage({ type: 'success', text: `Generated using ${data.sources_used} source(s).${savedNote}` })
+        const savedNote = data.saved_filename ? t('savedToFiles', { name: data.saved_filename }) : ''
+        setMessage({ type: 'success', text: t('generatedUsing', { count: data.sources_used, savedNote }) })
       } else {
         const err = await res.json()
         setMessage({ type: 'error', text: err.detail || 'Generation failed' })
       }
     } catch (err) {
       clearInterval(progressInterval)
-      setMessage({ type: 'error', text: 'Generation failed' })
+      setMessage({ type: 'error', text: tCommon('error') })
     } finally {
       setLoading(false)
       setLoadingStatus('')
@@ -780,10 +783,10 @@ export default function AgentPage() {
           next.delete(docId)
           return next
         })
-        setMessage({ type: 'success', text: 'Document deleted' })
+        setMessage({ type: 'success', text: t('docDeleted') })
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Delete failed' })
+      setMessage({ type: 'error', text: t('deleteFailed') })
     }
   }
 
@@ -823,7 +826,7 @@ export default function AgentPage() {
         })
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to load document' })
+      setMessage({ type: 'error', text: t('failedLoadDoc') })
     } finally {
       setLoadingContent(false)
     }
@@ -840,10 +843,10 @@ export default function AgentPage() {
         setDriveFiles(data.files || [])
         setShowDriveImport(true)
       } else {
-        setMessage({ type: 'error', text: 'Failed to load Drive files' })
+        setMessage({ type: 'error', text: t('failedDrive') })
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to connect to Drive' })
+      setMessage({ type: 'error', text: t('failedConnectDrive') })
     } finally {
       setLoadingDriveFiles(false)
     }
@@ -868,15 +871,15 @@ export default function AgentPage() {
 
       if (res.ok) {
         const data = await res.json()
-        setMessage({ type: 'success', text: `Imported: ${data.title}` })
+        setMessage({ type: 'success', text: t('importedFrom', { title: data.title }) })
         fetchDocuments()
         setShowDriveImport(false)
       } else {
         const err = await res.json()
-        setMessage({ type: 'error', text: err.detail || 'Import failed' })
+        setMessage({ type: 'error', text: err.detail || t('importFailed') })
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Import failed' })
+      setMessage({ type: 'error', text: t('importFailed') })
     } finally {
       setLoading(false)
     }
@@ -895,18 +898,18 @@ export default function AgentPage() {
       <Sidebar />
       <main style={styles.main}>
         <button onClick={() => router.push('/classes')} style={styles.backButton}>
-          ← Back to Dashboard
+          ← {t('backToDashboard')}
         </button>
 
-        <h1 style={styles.title}>AI Teaching Assistant</h1>
+        <h1 style={styles.title}>{t('title')}</h1>
 
         {/* Class Selector */}
         <div style={styles.classSelector}>
-          <label style={styles.classSelectorLabel}>Select Class:</label>
+          <label style={styles.classSelectorLabel}>{t('selectClass')}</label>
           {loadingCourses ? (
-            <span style={styles.loadingText}>Loading classes...</span>
+            <span style={styles.loadingText}>{t('loadingClasses')}</span>
           ) : courses.length === 0 ? (
-            <span style={styles.loadingText}>No classes found</span>
+            <span style={styles.loadingText}>{t('noClasses')}</span>
           ) : (
             <select
               value={selectedClassId}
@@ -928,19 +931,19 @@ export default function AgentPage() {
             style={activeTab === 'generate' ? styles.tabActive : styles.tab}
             onClick={() => setActiveTab('generate')}
           >
-            Generate Assignment
+            {t('tabGenerate')}
           </button>
           <button
             style={activeTab === 'schedule' ? styles.tabActive : styles.tab}
             onClick={() => { setActiveTab('schedule'); checkDuePosts() }}
           >
-            Scheduled Posts
+            {t('tabSchedule')}
           </button>
           <button
             style={styles.tab}
             onClick={openPostModal}
           >
-            Post to Classroom
+            {t('postToClassroom')}
           </button>
         </div>
 
@@ -956,18 +959,18 @@ export default function AgentPage() {
           <div style={styles.generateLayout}>
             {/* Document Sidebar */}
             <div style={styles.sidebar}>
-              <h3 style={styles.sidebarTitle}>Source Documents</h3>
+              <h3 style={styles.sidebarTitle}>{t('sourceDocuments')}</h3>
               <p style={styles.sidebarHint}>
                 {selectedDocIds.size > 0
-                  ? `${selectedDocIds.size} selected`
-                  : 'Select documents to use, or leave empty to search all'}
+                  ? t('docsSelected', { count: selectedDocIds.size })
+                  : t('selectDocsHint')}
               </p>
               <div style={styles.sidebarActions}>
-                <button onClick={selectAllDocs} style={styles.smallButton}>Select All</button>
-                <button onClick={clearSelection} style={styles.smallButton}>Clear</button>
+                <button onClick={selectAllDocs} style={styles.smallButton}>{t('selectAll')}</button>
+                <button onClick={clearSelection} style={styles.smallButton}>{t('clearSelection')}</button>
               </div>
               {documents.length === 0 ? (
-                <p style={styles.emptyText}>No documents uploaded yet.</p>
+                <p style={styles.emptyText}>{t('noDocumentsHint')}</p>
               ) : (
                 <ul style={styles.sidebarDocList}>
                   {documents.map((doc) => (
@@ -981,7 +984,7 @@ export default function AgentPage() {
                         />
                         <span style={styles.docTitle}>{doc.title || doc.filename || doc.id}</span>
                         {doc.shared && (
-                          <span style={styles.sharedBadge}>Shared</span>
+                          <span style={styles.sharedBadge}>{t('shared')}</span>
                         )}
                       </label>
                       <button
@@ -989,7 +992,7 @@ export default function AgentPage() {
                         style={styles.viewButton}
                         disabled={loadingContent}
                       >
-                        View
+                        {t('view')}
                       </button>
                     </li>
                   ))}
@@ -1000,11 +1003,11 @@ export default function AgentPage() {
             {/* Main Content */}
             <div style={styles.generateMain}>
               <div style={styles.section}>
-                <h2 style={styles.sectionTitle}>Create Assignment</h2>
+                <h2 style={styles.sectionTitle}>{t('createAssignment')}</h2>
                 <form onSubmit={handleGenerate} style={styles.form}>
                 <input
                   type="text"
-                  placeholder="Topic (e.g., 'Photosynthesis', 'World War II')"
+                  placeholder={t('topicPlaceholder')}
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
                   style={styles.input}
@@ -1012,7 +1015,7 @@ export default function AgentPage() {
                 />
                 <input
                   type="text"
-                  placeholder="Grade Level (e.g., '8th grade', 'High School')"
+                  placeholder={t('gradeLevelPlaceholder')}
                   value={gradeLevel}
                   onChange={(e) => setGradeLevel(e.target.value)}
                   style={styles.input}
@@ -1022,15 +1025,15 @@ export default function AgentPage() {
                   onChange={(e) => setAssignmentType(e.target.value)}
                   style={styles.input}
                 >
-                  <option value="worksheet">Worksheet</option>
-                  <option value="quiz">Quiz</option>
-                  <option value="essay prompt">Essay Prompt</option>
-                  <option value="discussion questions">Discussion Questions</option>
-                  <option value="homework">Homework</option>
-                  <option value="project">Project</option>
+                  <option value="worksheet">{t('typeWorksheet')}</option>
+                  <option value="quiz">{t('typeQuiz')}</option>
+                  <option value="essay prompt">{t('typeEssay')}</option>
+                  <option value="discussion questions">{t('typeDiscussion')}</option>
+                  <option value="homework">{t('typeHomework')}</option>
+                  <option value="project">{t('typeProject')}</option>
                 </select>
                 <textarea
-                  placeholder="Additional instructions (optional)"
+                  placeholder={t('additionalPlaceholder')}
                   value={additionalInstructions}
                   onChange={(e) => setAdditionalInstructions(e.target.value)}
                   style={styles.textarea}
@@ -1040,22 +1043,22 @@ export default function AgentPage() {
                 {(classStudents.length > 0 || classGroups.length > 0) && (
                   <div style={styles.studentSelector}>
                     <label style={styles.studentSelectorLabel}>
-                      Personalize for (optional):
+                      {t('personalizeFor')}
                     </label>
                     <div style={styles.personalizationModeRow}>
                       <label style={styles.radioLabel}>
                         <input type="radio" name="pmode" checked={personalizationMode === 'none'} onChange={() => { setPersonalizationMode('none'); setSelectedGroupId(null); setSelectedStudentIds(new Set()); }} />
-                        None
+                        {t('pModeNone')}
                       </label>
                       {classGroups.length > 0 && (
                         <label style={styles.radioLabel}>
                           <input type="radio" name="pmode" checked={personalizationMode === 'group'} onChange={() => { setPersonalizationMode('group'); setSelectedStudentIds(new Set()); }} />
-                          Group
+                          {t('pModeGroup')}
                         </label>
                       )}
                       <label style={styles.radioLabel}>
                         <input type="radio" name="pmode" checked={personalizationMode === 'individual'} onChange={() => { setPersonalizationMode('individual'); setSelectedGroupId(null); }} />
-                        Individual Students
+                        {t('pModeIndividual')}
                       </label>
                     </div>
 
@@ -1066,14 +1069,14 @@ export default function AgentPage() {
                           onChange={(e) => setSelectedGroupId(e.target.value ? Number(e.target.value) : null)}
                           style={styles.input}
                         >
-                          <option value="">Select a group...</option>
+                          <option value="">{t('selectGroup')}</option>
                           {classGroups.map((g) => (
-                            <option key={g.id} value={g.id}>{g.name} ({g.member_count} students)</option>
+                            <option key={g.id} value={g.id}>{g.name} {t('groupCount', { count: g.member_count })}</option>
                           ))}
                         </select>
                         {selectedGroupId && (
                           <p style={styles.studentSelectorHint}>
-                            Assignment will be tailored to the group&apos;s profile and all member profiles.
+                            {t('groupTailored')}
                           </p>
                         )}
                       </div>
@@ -1092,7 +1095,7 @@ export default function AgentPage() {
                             <span style={styles.studentCheckboxName}>{student.name}</span>
                             {student.notes && (
                               <span style={styles.studentNotesIndicator} title={student.notes}>
-                                has notes
+                                {t('hasNotes')}
                               </span>
                             )}
                           </label>
@@ -1103,13 +1106,13 @@ export default function AgentPage() {
                 )}
 
                 <button type="submit" disabled={!topic || loading} style={styles.button}>
-                  {loading ? 'Generating...' : 'Generate Assignment'}
+                  {loading ? t('generatingBtn') : t('generateBtn')}
                 </button>
                 </form>
               </div>
 
               <div style={styles.resultSection}>
-                <h2 style={styles.sectionTitle}>Generated Assignment</h2>
+                <h2 style={styles.sectionTitle}>{t('generatedAssignmentTitle')}</h2>
                 {loading ? (
                   <div style={styles.progressContainer}>
                     <div style={styles.progressStatus}>{loadingStatus}</div>
@@ -1131,32 +1134,32 @@ export default function AgentPage() {
                         onClick={() => navigator.clipboard.writeText(generatedAssignment)}
                         style={styles.copyButton}
                       >
-                        Copy to Clipboard
+                        {t('copyToClipboard')}
                       </button>
                       <button
                         onClick={promptSaveAssignment}
                         style={styles.saveButton}
                       >
-                        Save Assignment
+                        {t('saveAssignment')}
                       </button>
                       <button
                         onClick={openPostModal}
                         style={styles.postButton}
                       >
-                        Post to Classroom →
+                        {t('postToClassroomArrow')}
                       </button>
                       <button
                         onClick={handleScheduleFromGenerated}
                         style={{...styles.postButton, background: '#9334e6'}}
                       >
-                        Schedule Recurring
+                        {t('scheduleRecurring')}
                       </button>
                       <button
                         onClick={handleCheckContent}
                         disabled={checkStatus === 'checking'}
                         style={{...styles.postButton, background: '#e67c34', opacity: checkStatus === 'checking' ? 0.6 : 1}}
                       >
-                        {checkStatus === 'checking' ? 'Checking...' : 'Check Content'}
+                        {checkStatus === 'checking' ? t('checking') : t('checkContent')}
                       </button>
                     </div>
 
@@ -1164,7 +1167,7 @@ export default function AgentPage() {
                     {(checkResult || checkStatus === 'checking') && (
                       <div style={styles.checkPanel}>
                         <div style={styles.checkHeader}>
-                          <span>Content Review</span>
+                          <span>{t('contentReview')}</span>
                           {checkStatus === 'done' && (
                             <button
                               onClick={() => { setCheckResult(''); setCheckStatus('idle') }}
@@ -1176,7 +1179,7 @@ export default function AgentPage() {
                         </div>
                         <div style={styles.checkBody}>
                           {checkStatus === 'checking' && !checkResult && (
-                            <span style={{color: '#888', fontSize: '0.9rem'}}>Reviewing content...</span>
+                            <span style={{color: '#888', fontSize: '0.9rem'}}>{t('reviewingContent')}</span>
                           )}
                           <pre style={styles.checkPre}>{checkResult}</pre>
                         </div>
@@ -1184,14 +1187,14 @@ export default function AgentPage() {
                     )}
                   </>
                 ) : (
-                  <p style={styles.emptyText}>Your generated assignment will appear here.</p>
+                  <p style={styles.emptyText}>{t('generatedEmpty')}</p>
                 )}
               </div>
 
               {/* Saved Assignments */}
               {savedAssignments.length > 0 && (
                 <div style={styles.historySection}>
-                  <h2 style={styles.sectionTitle}>Saved Assignments ({savedAssignments.length})</h2>
+                  <h2 style={styles.sectionTitle}>{t('savedAssignmentsTitle', { count: savedAssignments.length })}</h2>
                   <div style={styles.historyList}>
                     {savedAssignments.map((item) => (
                       <div
@@ -1236,14 +1239,14 @@ export default function AgentPage() {
           <div style={styles.content}>
             <div style={styles.section}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h2 style={styles.sectionTitle}>Scheduled Recurring Posts</h2>
+                <h2 style={styles.sectionTitle}>{t('schedRecurringTitle')}</h2>
                 <button onClick={() => setShowScheduleForm(!showScheduleForm)} style={styles.button}>
-                  {showScheduleForm ? 'Cancel' : 'New Scheduled Post'}
+                  {showScheduleForm ? tCommon('cancel') : t('schedNewBtn')}
                 </button>
               </div>
 
               <p style={styles.hintText}>
-                Set up recurring posts that automatically publish to your Classroom on a schedule (e.g., weekly reading diary, monthly book report).
+                {t('schedHint')}
               </p>
 
               {showScheduleForm && (
@@ -1251,24 +1254,24 @@ export default function AgentPage() {
                   <div style={{ display: 'flex', gap: '1rem' }}>
                     <label style={styles.radioLabel}>
                       <input type="radio" checked={schedPostType === 'assignment'} onChange={() => setSchedPostType('assignment')} />
-                      Assignment
+                      {t('schedPostTypeAssignment')}
                     </label>
                     <label style={styles.radioLabel}>
                       <input type="radio" checked={schedPostType === 'announcement'} onChange={() => setSchedPostType('announcement')} />
-                      Announcement (Stream)
+                      {t('schedPostTypeAnnouncement')}
                     </label>
                   </div>
 
                   <input
                     type="text"
-                    placeholder="Title"
+                    placeholder={t('postTitle')}
                     value={schedTitle}
                     onChange={(e) => setSchedTitle(e.target.value)}
                     style={styles.input}
                     required
                   />
                   <textarea
-                    placeholder="Content (this text will be posted each time)"
+                    placeholder={t('schedContentPlaceholder')}
                     value={schedContent}
                     onChange={(e) => setSchedContent(e.target.value)}
                     style={styles.textarea}
@@ -1278,41 +1281,41 @@ export default function AgentPage() {
 
                   <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                     <div style={{ flex: 1, minWidth: '150px' }}>
-                      <label style={styles.schedLabel}>Frequency</label>
+                      <label style={styles.schedLabel}>{t('frequency')}</label>
                       <select value={schedFrequency} onChange={(e) => setSchedFrequency(e.target.value)} style={styles.input}>
-                        <option value="weekly">Weekly</option>
-                        <option value="biweekly">Every 2 Weeks</option>
-                        <option value="monthly">Monthly</option>
+                        <option value="weekly">{t('freqWeekly')}</option>
+                        <option value="biweekly">{t('freqBiweeklyFull')}</option>
+                        <option value="monthly">{t('freqMonthlySimple')}</option>
                       </select>
                     </div>
 
                     <div style={{ flex: 1, minWidth: '150px' }}>
-                      <label style={styles.schedLabel}>Day of Week</label>
+                      <label style={styles.schedLabel}>{t('dayOfWeek')}</label>
                       <select value={schedDayOfWeek} onChange={(e) => setSchedDayOfWeek(Number(e.target.value))} style={styles.input}>
-                        <option value={0}>Monday</option>
-                        <option value={1}>Tuesday</option>
-                        <option value={2}>Wednesday</option>
-                        <option value={3}>Thursday</option>
-                        <option value={4}>Friday</option>
-                        <option value={5}>Saturday</option>
-                        <option value={6}>Sunday</option>
+                        <option value={0}>{t('dayMon')}</option>
+                        <option value={1}>{t('dayTue')}</option>
+                        <option value={2}>{t('dayWed')}</option>
+                        <option value={3}>{t('dayThu')}</option>
+                        <option value={4}>{t('dayFri')}</option>
+                        <option value={5}>{t('daySat')}</option>
+                        <option value={6}>{t('daySun')}</option>
                       </select>
                     </div>
 
                     {schedFrequency === 'monthly' && (
                       <div style={{ flex: 1, minWidth: '150px' }}>
-                        <label style={styles.schedLabel}>Which Week</label>
+                        <label style={styles.schedLabel}>{t('schedWhichWeek')}</label>
                         <select value={schedWeekOfMonth} onChange={(e) => setSchedWeekOfMonth(Number(e.target.value))} style={styles.input}>
-                          <option value={1}>1st</option>
-                          <option value={2}>2nd</option>
-                          <option value={3}>3rd</option>
-                          <option value={4}>4th</option>
+                          <option value={1}>{t('ordinal1')}</option>
+                          <option value={2}>{t('ordinal2')}</option>
+                          <option value={3}>{t('ordinal3')}</option>
+                          <option value={4}>{t('ordinal4')}</option>
                         </select>
                       </div>
                     )}
 
                     <div style={{ flex: 1, minWidth: '120px' }}>
-                      <label style={styles.schedLabel}>Time</label>
+                      <label style={styles.schedLabel}>{t('timeOfDay')}</label>
                       <input type="time" value={schedTime} onChange={(e) => setSchedTime(e.target.value)} style={styles.input} />
                     </div>
                   </div>
@@ -1320,7 +1323,7 @@ export default function AgentPage() {
                   {schedPostType === 'assignment' && (
                     <input
                       type="number"
-                      placeholder="Max Points (optional)"
+                      placeholder={t('maxPointsOptional')}
                       value={schedMaxPoints}
                       onChange={(e) => setSchedMaxPoints(e.target.value)}
                       style={styles.input}
@@ -1330,22 +1333,32 @@ export default function AgentPage() {
 
                   <p style={styles.hintText}>
                     {schedFrequency === 'monthly'
-                      ? `Will post on the ${['1st','2nd','3rd','4th'][schedWeekOfMonth-1]} ${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][schedDayOfWeek]} of every month at ${schedTime}`
+                      ? t('schedHintMonthly', {
+                          ordinal: [t('ordinal1'),t('ordinal2'),t('ordinal3'),t('ordinal4')][schedWeekOfMonth-1],
+                          day: [t('dayMon'),t('dayTue'),t('dayWed'),t('dayThu'),t('dayFri'),t('daySat'),t('daySun')][schedDayOfWeek],
+                          time: schedTime
+                        })
                       : schedFrequency === 'biweekly'
-                        ? `Will post every other ${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][schedDayOfWeek]} at ${schedTime}`
-                        : `Will post every ${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][schedDayOfWeek]} at ${schedTime}`
+                        ? t('schedHintBiweekly', {
+                            day: [t('dayMon'),t('dayTue'),t('dayWed'),t('dayThu'),t('dayFri'),t('daySat'),t('daySun')][schedDayOfWeek],
+                            time: schedTime
+                          })
+                        : t('schedHintWeekly', {
+                            day: [t('dayMon'),t('dayTue'),t('dayWed'),t('dayThu'),t('dayFri'),t('daySat'),t('daySun')][schedDayOfWeek],
+                            time: schedTime
+                          })
                     }
                   </p>
 
                   <button type="submit" disabled={loading || !schedTitle || !schedContent} style={styles.button}>
-                    {loading ? 'Creating...' : 'Create Scheduled Post'}
+                    {loading ? t('schedCreating') : t('schedCreateBtn')}
                   </button>
                 </form>
               )}
 
               {/* Scheduled Posts List */}
               {scheduledPosts.length === 0 ? (
-                <p style={styles.emptyText}>No scheduled posts yet for this class.</p>
+                <p style={styles.emptyText}>{t('schedNoPosts')}</p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                   {scheduledPosts.map((sp) => (
@@ -1367,7 +1380,7 @@ export default function AgentPage() {
                               background: sp.post_type === 'announcement' ? '#fff3cd' : '#e8f0fe',
                               color: sp.post_type === 'announcement' ? '#856404' : '#1a73e8',
                             }}>
-                              {sp.post_type === 'announcement' ? 'Announcement' : 'Assignment'}
+                              {sp.post_type === 'announcement' ? t('postTypeAnnouncement') : t('postTypeAssignment')}
                             </span>
                             <span style={{
                               fontSize: '0.7rem',
@@ -1376,34 +1389,44 @@ export default function AgentPage() {
                               background: sp.active ? '#d4edda' : '#f8d7da',
                               color: sp.active ? '#155724' : '#721c24',
                             }}>
-                              {sp.active ? 'Active' : 'Paused'}
+                              {sp.active ? t('active') : t('paused')}
                             </span>
                           </div>
                           <p style={{ fontSize: '0.85rem', color: '#555', margin: '0.25rem 0' }}>
                             {sp.frequency === 'monthly'
-                              ? `${['1st','2nd','3rd','4th'][(sp.week_of_month || 1) - 1]} ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][sp.day_of_week || 0]} of every month`
+                              ? t('schedHintMonthly', {
+                                  ordinal: [t('ordinal1'),t('ordinal2'),t('ordinal3'),t('ordinal4')][(sp.week_of_month || 1) - 1],
+                                  day: [t('dayMonAbbr'),t('dayTueAbbr'),t('dayWedAbbr'),t('dayThuAbbr'),t('dayFriAbbr'),t('daySatAbbr'),t('daySunAbbr')][sp.day_of_week || 0],
+                                  time: sp.time_of_day
+                                })
                               : sp.frequency === 'biweekly'
-                                ? `Every other ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][sp.day_of_week || 0]}`
-                                : `Every ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][sp.day_of_week || 0]}`
-                            } at {sp.time_of_day}
+                                ? t('schedHintBiweekly', {
+                                    day: [t('dayMonAbbr'),t('dayTueAbbr'),t('dayWedAbbr'),t('dayThuAbbr'),t('dayFriAbbr'),t('daySatAbbr'),t('daySunAbbr')][sp.day_of_week || 0],
+                                    time: sp.time_of_day
+                                  })
+                                : t('schedHintWeekly', {
+                                    day: [t('dayMonAbbr'),t('dayTueAbbr'),t('dayWedAbbr'),t('dayThuAbbr'),t('dayFriAbbr'),t('daySatAbbr'),t('daySunAbbr')][sp.day_of_week || 0],
+                                    time: sp.time_of_day
+                                  })
+                            }
                           </p>
                           <p style={{ fontSize: '0.8rem', color: '#888', margin: '0.25rem 0' }}>
-                            Next: {new Date(sp.next_post_at).toLocaleDateString()}
-                            {sp.last_posted_at && ` | Last: ${new Date(sp.last_posted_at).toLocaleDateString()}`}
+                            {t('nextPost')} {new Date(sp.next_post_at).toLocaleDateString()}
+                            {sp.last_posted_at && ` | ${t('lastPost')} ${new Date(sp.last_posted_at).toLocaleDateString()}`}
                           </p>
                         </div>
                         <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
                           <button onClick={() => handlePostNow(sp.id)} disabled={loading} style={{ ...styles.smallButton, background: '#28a745', color: '#fff', border: 'none' }}>
-                            Post Now
+                            {t('postNow')}
                           </button>
                           <button onClick={() => handleToggleSchedule(sp.id)} style={styles.smallButton}>
-                            {sp.active ? 'Pause' : 'Resume'}
+                            {sp.active ? t('pause') : t('resume')}
                           </button>
                           <button onClick={() => startEditPost(sp)} style={{ ...styles.smallButton, color: '#1a73e8' }}>
-                            Edit
+                            {tCommon('edit')}
                           </button>
                           <button onClick={() => handleDeleteSchedule(sp.id)} style={{ ...styles.smallButton, color: '#dc3545' }}>
-                            Delete
+                            {tCommon('delete')}
                           </button>
                         </div>
                       </div>
@@ -1414,7 +1437,7 @@ export default function AgentPage() {
                             value={editTitle}
                             onChange={(e) => setEditTitle(e.target.value)}
                             style={styles.input}
-                            placeholder="Title"
+                            placeholder={t('editTitlePlaceholder')}
                           />
                           <textarea
                             value={editContent}
@@ -1424,25 +1447,25 @@ export default function AgentPage() {
                           />
                           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                             <div style={{ flex: 1, minWidth: '140px' }}>
-                              <label style={styles.schedLabel}>Day of Week</label>
+                              <label style={styles.schedLabel}>{t('dayOfWeek')}</label>
                               <select value={editDayOfWeek} onChange={(e) => setEditDayOfWeek(Number(e.target.value))} style={styles.input}>
-                                <option value={0}>Monday</option>
-                                <option value={1}>Tuesday</option>
-                                <option value={2}>Wednesday</option>
-                                <option value={3}>Thursday</option>
-                                <option value={4}>Friday</option>
-                                <option value={5}>Saturday</option>
-                                <option value={6}>Sunday</option>
+                                <option value={0}>{t('dayMon')}</option>
+                                <option value={1}>{t('dayTue')}</option>
+                                <option value={2}>{t('dayWed')}</option>
+                                <option value={3}>{t('dayThu')}</option>
+                                <option value={4}>{t('dayFri')}</option>
+                                <option value={5}>{t('daySat')}</option>
+                                <option value={6}>{t('daySun')}</option>
                               </select>
                             </div>
                             <div style={{ flex: 1, minWidth: '120px' }}>
-                              <label style={styles.schedLabel}>Time</label>
+                              <label style={styles.schedLabel}>{t('timeOfDay')}</label>
                               <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} style={styles.input} />
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            <button onClick={() => handleSaveEdit(sp.id)} style={{ ...styles.smallButton, background: '#28a745', color: '#fff', border: 'none' }}>Save</button>
-                            <button onClick={() => setEditingPostId(null)} style={styles.smallButton}>Cancel</button>
+                            <button onClick={() => handleSaveEdit(sp.id)} style={{ ...styles.smallButton, background: '#28a745', color: '#fff', border: 'none' }}>{tCommon('save')}</button>
+                            <button onClick={() => setEditingPostId(null)} style={styles.smallButton}>{tCommon('cancel')}</button>
                           </div>
                         </div>
                       ) : (
@@ -1476,12 +1499,12 @@ export default function AgentPage() {
           <div style={styles.modalOverlay} onClick={() => setShowDriveImport(false)}>
             <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
               <div style={styles.modalHeader}>
-                <h2 style={styles.modalTitle}>Import from Google Drive</h2>
+                <h2 style={styles.modalTitle}>{t('driveImportTitle')}</h2>
                 <button onClick={() => setShowDriveImport(false)} style={styles.closeButton}>×</button>
               </div>
               <div style={styles.driveFileList}>
                 {driveFiles.length === 0 ? (
-                  <p style={styles.emptyText}>No compatible files found in your Drive.</p>
+                  <p style={styles.emptyText}>{t('driveNoFiles')}</p>
                 ) : (
                   driveFiles.map((file) => (
                     <div key={file.id} style={styles.driveFileItem}>
@@ -1494,7 +1517,7 @@ export default function AgentPage() {
                         disabled={loading}
                         style={styles.importButton}
                       >
-                        {loading ? '...' : 'Import'}
+                        {loading ? '...' : t('importBtn')}
                       </button>
                     </div>
                   ))
@@ -1509,35 +1532,35 @@ export default function AgentPage() {
           <div style={styles.modalOverlay} onClick={() => setShowPostModal(false)}>
             <div style={styles.saveModal} onClick={(e) => e.stopPropagation()}>
               <div style={styles.modalHeader}>
-                <h2 style={styles.modalTitle}>Post to Google Classroom</h2>
+                <h2 style={styles.modalTitle}>{t('postToClassroomModalTitle')}</h2>
                 <button onClick={() => setShowPostModal(false)} style={styles.closeButton}>×</button>
               </div>
               <div style={styles.saveModalContent}>
                 {/* Post type toggle */}
-                <label style={styles.saveLabel}>Post as:</label>
+                <label style={styles.saveLabel}>{t('postAs')}</label>
                 <div style={styles.personalizationModeRow}>
                   <label style={styles.radioLabel}>
                     <input type="radio" checked={postMode === 'assignment'} onChange={() => setPostMode('assignment')} />
-                    Assignment
+                    {t('postModeAssignment')}
                   </label>
                   <label style={styles.radioLabel}>
                     <input type="radio" checked={postMode === 'announcement'} onChange={() => setPostMode('announcement')} />
-                    Announcement (Stream Notification)
+                    {t('postModeAnnouncement')}
                   </label>
                 </div>
 
                 {postMode === 'assignment' && (
                   <>
-                    <label style={{...styles.saveLabel, marginTop: '1rem'}}>Assignment Title:</label>
+                    <label style={{...styles.saveLabel, marginTop: '1rem'}}>{t('assignmentTitleLabel')}</label>
                     <input
                       type="text"
                       value={postTitle}
                       onChange={(e) => setPostTitle(e.target.value)}
                       style={styles.input}
-                      placeholder="Enter assignment title"
+                      placeholder={t('assignmentTitleLabel')}
                     />
 
-                    <label style={{...styles.saveLabel, marginTop: '1rem'}}>Points (optional):</label>
+                    <label style={{...styles.saveLabel, marginTop: '1rem'}}>{t('pointsLabel')}</label>
                     <input
                       type="number"
                       value={postPoints}
@@ -1547,7 +1570,7 @@ export default function AgentPage() {
                       min="0"
                     />
 
-                    <label style={{...styles.saveLabel, marginTop: '1rem'}}>Due Date (optional):</label>
+                    <label style={{...styles.saveLabel, marginTop: '1rem'}}>{t('dueDateLabel')}</label>
                     <input
                       type="date"
                       value={postDueDate}
@@ -1561,14 +1584,14 @@ export default function AgentPage() {
                         checked={postAsDraft}
                         onChange={(e) => setPostAsDraft(e.target.checked)}
                       />
-                      Save as draft (don&apos;t publish to students yet)
+                      {t('saveAsDraftLabel')}
                     </label>
                   </>
                 )}
 
                 {postMode === 'announcement' && (
                   <p style={{ ...styles.hintText, marginTop: '1rem' }}>
-                    This will post the generated text as a stream notification visible to all students. No title, points, or due date — just the message.
+                    {t('announcementStreamHint')}
                   </p>
                 )}
 
@@ -1577,17 +1600,17 @@ export default function AgentPage() {
                     onClick={() => setShowPostModal(false)}
                     style={styles.cancelButton}
                   >
-                    Cancel
+                    {tCommon('cancel')}
                   </button>
                   <button
                     onClick={postToClassroom}
                     disabled={(postMode === 'assignment' && !postTitle) || loading}
                     style={styles.postConfirmButton}
                   >
-                    {loading ? 'Posting...' : (
+                    {loading ? t('posting') : (
                       postMode === 'announcement'
-                        ? 'Post Announcement'
-                        : (postAsDraft ? 'Save Draft' : 'Post Assignment')
+                        ? t('postAnnouncement')
+                        : (postAsDraft ? t('saveDraft') : t('postAssignmentBtn'))
                     )}
                   </button>
                 </div>
@@ -1601,17 +1624,17 @@ export default function AgentPage() {
           <div style={styles.modalOverlay} onClick={() => setShowSaveModal(false)}>
             <div style={styles.saveModal} onClick={(e) => e.stopPropagation()}>
               <div style={styles.modalHeader}>
-                <h2 style={styles.modalTitle}>Save Assignment</h2>
+                <h2 style={styles.modalTitle}>{t('saveAssignmentModalTitle')}</h2>
                 <button onClick={() => setShowSaveModal(false)} style={styles.closeButton}>×</button>
               </div>
               <div style={styles.saveModalContent}>
-                <label style={styles.saveLabel}>Assignment Name:</label>
+                <label style={styles.saveLabel}>{t('assignmentNameLabel')}</label>
                 <input
                   type="text"
                   value={saveAssignmentName}
                   onChange={(e) => setSaveAssignmentName(e.target.value)}
                   style={styles.input}
-                  placeholder="Enter a name for this assignment"
+                  placeholder={t('assignmentNamePlaceholder')}
                   autoFocus
                 />
                 <div style={styles.saveModalActions}>
@@ -1619,14 +1642,14 @@ export default function AgentPage() {
                     onClick={() => setShowSaveModal(false)}
                     style={styles.cancelButton}
                   >
-                    Cancel
+                    {tCommon('cancel')}
                   </button>
                   <button
                     onClick={saveAssignment}
                     disabled={!saveAssignmentName || loading}
                     style={styles.saveConfirmButton}
                   >
-                    {loading ? 'Saving...' : 'Save'}
+                    {loading ? tCommon('saving') : tCommon('save')}
                   </button>
                 </div>
               </div>
@@ -2049,7 +2072,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   historyItemSelected: {
     background: '#e8f0fe',
-    borderColor: '#1a73e8',
+    border: '2px solid #1a73e8',
   },
   historyItemHeader: {
     display: 'flex',

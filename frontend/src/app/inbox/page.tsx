@@ -1,14 +1,16 @@
 'use client'
 
 import Sidebar from '@/components/Sidebar'
+import { useTranslations } from 'next-intl'
 
 export default function InboxPage() {
+  const t = useTranslations('inbox')
   return (
     <div style={styles.app}>
       <Sidebar />
       <div style={styles.body}>
         <div style={styles.header}>
-          <span style={styles.title}>Inbox</span>
+          <span style={styles.title}>{t('title')}</span>
         </div>
         <div style={styles.placeholder}>
           <div style={styles.placeholderIcon}>
@@ -17,8 +19,8 @@ export default function InboxPage() {
               <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
             </svg>
           </div>
-          <div style={styles.placeholderTitle}>Gmail Inbox</div>
-          <div style={styles.placeholderText}>Full Gmail integration coming soon — read, search, and reply to emails from here.</div>
+          <div style={styles.placeholderTitle}>{t('gmailTitle')}</div>
+          <div style={styles.placeholderText}>{t('gmailComingSoon')}</div>
         </div>
       </div>
     </div>

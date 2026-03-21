@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.config import get_settings
-from app.routers import auth, classroom, drive, corpus, agent, assignments, students, linked_classes, scheduled_posts, chat, onboarding, dashboard, content, calendar, gmail, feedback, grader, class_preferences, files
+from app.routers import auth, classroom, drive, corpus, agent, assignments, students, linked_classes, scheduled_posts, chat, onboarding, dashboard, content, calendar, gmail, feedback, grader, class_preferences, files, erasure, audit, export
 import traceback
 import sys
 
@@ -29,6 +29,23 @@ async def scheduled_post_checker():
         except Exception as e:
             print(f"[Scheduler] Check failed: {e}", file=sys.stderr)
         await asyncio.sleep(900)  # 15 minutes
+
+
+async def retention_enforcer():
+    """Background task that purges records past their GDPR retention period. Runs nightly."""
+    from app.services.retention import run_retention
+    await asyncio.sleep(3600)  # Wait 1 hour after startup before first run
+    while True:
+        try:
+            report = run_retention()
+            purged = {k: v for k, v in report.items() if isinstance(v, int) and v > 0}
+            if purged:
+                print(f"[Retention] Purged: {purged}")
+            else:
+                print("[Retention] Run complete — nothing to purge")
+        except Exception as e:
+            print(f"[Retention] Run failed: {e}", file=sys.stderr)
+        await asyncio.sleep(86400)  # Run every 24 hours
 
 
 async def conversation_auto_ender():
@@ -64,11 +81,14 @@ async def lifespan(app):
     # Start background schedulers
     task = asyncio.create_task(scheduled_post_checker())
     auto_end_task = asyncio.create_task(conversation_auto_ender())
+    retention_task = asyncio.create_task(retention_enforcer())
     print("[Scheduler] Background scheduled post checker started")
     print("[Scheduler] Background conversation auto-ender started")
+    print("[Retention] GDPR retention enforcer started (first run in 1 hour)")
     yield
     task.cancel()
     auto_end_task.cancel()
+    retention_task.cancel()
 
 
 app = FastAPI(
@@ -111,6 +131,9 @@ app.include_router(feedback.router, prefix="/feedback", tags=["Feedback"])
 app.include_router(grader.router, prefix="/grader", tags=["Grader"])
 app.include_router(class_preferences.router, prefix="/class-preferences", tags=["Class Preferences"])
 app.include_router(files.router, prefix="/files", tags=["Files"])
+app.include_router(erasure.router, prefix="/erase", tags=["Erasure"])
+app.include_router(audit.router, prefix="/audit", tags=["Audit"])
+app.include_router(export.router, prefix="/export", tags=["Export"])
 
 
 @app.get("/health")

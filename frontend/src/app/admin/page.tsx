@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import { useTranslations } from 'next-intl'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -15,6 +16,8 @@ interface FeedbackEntry {
 
 export default function AdminPage() {
   const router = useRouter()
+  const t = useTranslations('admin')
+  const tCommon = useTranslations('common')
   const [feedback, setFeedback] = useState<FeedbackEntry[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -35,7 +38,7 @@ export default function AdminPage() {
       .finally(() => setLoading(false))
   }, [router])
 
-  if (loading) return <div style={s.center}>Loading...</div>
+  if (loading) return <div style={s.center}>{tCommon('loading')}</div>
   if (error) return <div style={s.center}><div style={s.error}>{error}</div></div>
 
   return (
@@ -43,12 +46,14 @@ export default function AdminPage() {
       <Sidebar />
       <div style={s.body}>
         <div style={s.header}>
-          <h1 style={s.title}>Suggestion Box</h1>
-          <span style={s.count}>{feedback.length} submission{feedback.length !== 1 ? 's' : ''}</span>
+          <h1 style={s.title}>{t('title')}</h1>
+          <span style={s.count}>
+            {feedback.length !== 1 ? t('submissionsPlural', { count: feedback.length }) : t('submissions', { count: feedback.length })}
+          </span>
         </div>
 
         {feedback.length === 0 ? (
-          <div style={s.empty}>No feedback yet.</div>
+          <div style={s.empty}>{t('noFeedback')}</div>
         ) : (
           <div style={s.list}>
             {feedback.map(f => (

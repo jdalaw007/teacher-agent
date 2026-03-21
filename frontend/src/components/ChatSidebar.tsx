@@ -1,5 +1,7 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
+
 interface Conversation {
   id: string
   title: string
@@ -33,22 +35,23 @@ export default function ChatSidebar({
   onNewConversation,
   onSelectClass,
 }: ChatSidebarProps) {
+  const t = useTranslations('chatSidebar')
   return (
     <div style={styles.sidebar}>
       {/* New Conversation Button */}
       <button onClick={onNewConversation} style={styles.newChatBtn}>
-        + New Conversation
+        {t('newConversation')}
       </button>
 
       {/* Class Focus */}
       <div style={styles.section}>
-        <div style={styles.sectionTitle}>Focus Class</div>
+        <div style={styles.sectionTitle}>{t('focusClass')}</div>
         <select
           value={focusClassId}
           onChange={(e) => onSelectClass(e.target.value)}
           style={styles.classSelect}
         >
-          <option value="">All Classes</option>
+          <option value="">{t('allClasses')}</option>
           {classes.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -57,7 +60,7 @@ export default function ChatSidebar({
         </select>
         {focusClassId && (
           <div style={styles.classInfo}>
-            <span>{studentCount} students</span>
+            <span>{t('studentCount', { count: studentCount })}</span>
           </div>
         )}
       </div>
@@ -65,7 +68,7 @@ export default function ChatSidebar({
       {/* Recent Insights */}
       {recentInsights.length > 0 && (
         <div style={styles.section}>
-          <div style={styles.sectionTitle}>Agent Insights</div>
+          <div style={styles.sectionTitle}>{t('agentInsights')}</div>
           {recentInsights.map((insight, i) => (
             <div key={i} style={styles.insightItem}>
               {insight}
@@ -76,10 +79,10 @@ export default function ChatSidebar({
 
       {/* Past Conversations */}
       <div style={styles.section}>
-        <div style={styles.sectionTitle}>Past Conversations</div>
+        <div style={styles.sectionTitle}>{t('pastConversations')}</div>
         <div style={styles.convList}>
           {conversations.length === 0 && (
-            <div style={styles.emptyText}>No conversations yet</div>
+            <div style={styles.emptyText}>{t('noConversations')}</div>
           )}
           {conversations.map((conv) => (
             <button
@@ -91,11 +94,11 @@ export default function ChatSidebar({
               }}
             >
               <div style={styles.convTitle}>
-                {conv.title || 'Untitled conversation'}
+                {conv.title || t('untitled')}
               </div>
               <div style={styles.convDate}>
                 {new Date(conv.started_at).toLocaleDateString()}
-                {conv.ended_at && ' (ended)'}
+                {conv.ended_at && ` ${t('ended')}`}
               </div>
             </button>
           ))}

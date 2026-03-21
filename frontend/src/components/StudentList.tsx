@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -41,6 +42,8 @@ interface StudentListProps {
 const GROUP_COLORS = ['#1a73e8', '#34a853', '#ea4335', '#fbbc05', '#9334e6', '#e67c73']
 
 export default function StudentList({ students, groups = [], onStudentUpdated, onStudentDeleted }: StudentListProps) {
+  const t = useTranslations('studentList')
+  const tCommon = useTranslations('common')
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [editingNotes, setEditingNotes] = useState('')
   const [editingEmail, setEditingEmail] = useState('')
@@ -50,7 +53,7 @@ export default function StudentList({ students, groups = [], onStudentUpdated, o
   if (students.length === 0) {
     return (
       <div style={styles.empty}>
-        <p>No students yet. Import from Classroom or add manually.</p>
+        <p>{t('noStudents')}</p>
       </div>
     )
   }
@@ -82,13 +85,13 @@ export default function StudentList({ students, groups = [], onStudentUpdated, o
       })
 
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Saved!' })
+        setMessage({ type: 'success', text: t('saved') })
         onStudentUpdated()
       } else {
-        setMessage({ type: 'error', text: 'Failed to save' })
+        setMessage({ type: 'error', text: t('failedToSave') })
       }
     } catch {
-      setMessage({ type: 'error', text: 'Failed to save' })
+      setMessage({ type: 'error', text: t('failedToSave') })
     } finally {
       setSaving(false)
     }
@@ -96,7 +99,7 @@ export default function StudentList({ students, groups = [], onStudentUpdated, o
 
   const handleDelete = async (studentId: number, e: React.MouseEvent) => {
     e.stopPropagation()
-    if (!confirm('Delete this student?')) return
+    if (!confirm(t('deleteStudent'))) return
 
     const token = localStorage.getItem('token')
     try {
@@ -169,7 +172,7 @@ export default function StudentList({ students, groups = [], onStudentUpdated, o
                 backgroundColor: student.classroom_user_id ? '#e8f0fe' : '#fff3cd',
                 color: student.classroom_user_id ? '#1a73e8' : '#856404',
               }}>
-                {student.classroom_user_id ? 'Classroom' : 'Manual'}
+                {student.classroom_user_id ? t('classroom') : t('manual')}
               </span>
               <button
                 onClick={(e) => handleDelete(student.id, e)}
@@ -206,22 +209,22 @@ export default function StudentList({ students, groups = [], onStudentUpdated, o
                 </div>
               )}
 
-              <label style={styles.notesLabel}>Email</label>
+              <label style={styles.notesLabel}>{t('emailLabel')}</label>
               <input
                 type="email"
                 value={editingEmail}
                 onChange={(e) => setEditingEmail(e.target.value)}
                 style={{ ...styles.notesTextarea, rows: undefined, resize: undefined, padding: '8px 12px' } as React.CSSProperties}
-                placeholder="student@example.com"
+                placeholder={t('emailPlaceholder')}
               />
 
-              <label style={{ ...styles.notesLabel, marginTop: '0.75rem' }}>Teacher Notes</label>
+              <label style={{ ...styles.notesLabel, marginTop: '0.75rem' }}>{t('notesLabel')}</label>
               <textarea
                 value={editingNotes}
                 onChange={(e) => setEditingNotes(e.target.value)}
                 style={styles.notesTextarea}
                 rows={4}
-                placeholder="Add observations about learning level, accommodations, preferences..."
+                placeholder={t('notesPlaceholder')}
               />
               <div style={styles.notesActions}>
                 {message && (
@@ -237,14 +240,14 @@ export default function StudentList({ students, groups = [], onStudentUpdated, o
                   disabled={saving}
                   style={styles.saveButton}
                 >
-                  {saving ? 'Saving...' : 'Save Notes'}
+                  {saving ? t('saving') : t('saveNotes')}
                 </button>
               </div>
 
               {/* Group memberships */}
               {groups.length > 0 && (
                 <div style={styles.groupSection}>
-                  <label style={styles.notesLabel}>Groups</label>
+                  <label style={styles.notesLabel}>{t('groupsLabel')}</label>
                   <div style={styles.groupCheckboxList}>
                     {groups.map((g) => {
                       const isMember = student.groups?.some(sg => sg.id === g.id) ?? false

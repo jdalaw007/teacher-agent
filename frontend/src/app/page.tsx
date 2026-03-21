@@ -1,8 +1,12 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export default function Home() {
+  const t = useTranslations('login')
+
   const handleLogin = () => {
     window.location.href = `${API_URL}/auth/login`
   }
@@ -10,15 +14,15 @@ export default function Home() {
   return (
     <main style={styles.main}>
       <div style={styles.container}>
-        <h1 style={styles.title}>Teacher Agent</h1>
+        <h1 style={styles.title}>{t('title')}</h1>
         <p style={styles.description}>
-          AI-powered teaching assistant for Google Classroom
+          {t('description')}
         </p>
         <button onClick={handleLogin} style={styles.button}>
-          Sign in with Google
+          {t('button')}
         </button>
         <p style={styles.hint}>
-          Use your school or work Google account to access Google Classroom data.
+          {t('hint')}
         </p>
       </div>
     </main>

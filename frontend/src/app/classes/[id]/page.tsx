@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 import AssignmentList from '@/components/AssignmentList'
 import StudentList from '@/components/StudentList'
+import { useTranslations } from 'next-intl'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -48,6 +49,8 @@ interface StudentGroup {
 export default function ClassPage() {
   const params = useParams()
   const router = useRouter()
+  const t = useTranslations('classDetail')
+  const tCommon = useTranslations('common')
   const courseId = params.id as string
 
   const [course, setCourse] = useState<Course | null>(null)
@@ -112,7 +115,7 @@ export default function ClassPage() {
         setCourse(courseData)
         setAssignments(assignmentsData.assignments || [])
       } catch (err) {
-        setError('Failed to load class data.')
+        setError(t('errorLoadClass'))
       } finally {
         setLoading(false)
       }
@@ -178,7 +181,7 @@ export default function ClassPage() {
         const data = await res.json()
         setStudentMessage({
           type: 'success',
-          text: `Imported ${data.imported} student(s), ${data.skipped} already existed.`,
+          text: t('importedRoster', { imported: data.imported, skipped: data.skipped }),
         })
         fetchStudents()
       } else {
@@ -214,7 +217,7 @@ export default function ClassPage() {
         setNewStudentName('')
         setNewStudentEmail('')
         setShowAddStudent(false)
-        setStudentMessage({ type: 'success', text: 'Student added!' })
+        setStudentMessage({ type: 'success', text: t('studentAdded') })
         fetchStudents()
       } else {
         const err = await res.json()
@@ -240,7 +243,7 @@ export default function ClassPage() {
         setNewGroupName('')
         setNewGroupDesc('')
         setShowAddGroup(false)
-        setStudentMessage({ type: 'success', text: 'Group created!' })
+        setStudentMessage({ type: 'success', text: t('groupCreated') })
         fetchGroups()
       } else {
         const err = await res.json()
@@ -252,7 +255,7 @@ export default function ClassPage() {
   }
 
   const handleDeleteGroup = async (groupId: number) => {
-    if (!confirm('Delete this group?')) return
+    if (!confirm(t('deleteGroupConfirm'))) return
     const token = localStorage.getItem('token')
     try {
       const res = await fetch(`${API_URL}/students/groups/${groupId}`, {
@@ -260,7 +263,7 @@ export default function ClassPage() {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (res.ok) {
-        setStudentMessage({ type: 'success', text: 'Group deleted' })
+        setStudentMessage({ type: 'success', text: t('groupDeleted') })
         fetchGroups()
         fetchStudents()
       }
@@ -284,7 +287,7 @@ export default function ClassPage() {
         const data = await res.json()
         setStudentMessage({
           type: 'success',
-          text: `Synced ${data.synced} submission(s) across ${data.assignments_checked} assignment(s).`,
+          text: t('syncedSubmissions', { synced: data.synced, assignments: data.assignments_checked }),
         })
         fetchStudents()
       } else {
@@ -310,7 +313,7 @@ export default function ClassPage() {
         body: JSON.stringify({ to: selected.map(s => s.email), subject: mailSubject, body: mailBody }),
       })
       if (res.ok) {
-        setStudentMessage({ type: 'success', text: mode === 'send' ? 'Email sent!' : 'Draft saved to Gmail.' })
+        setStudentMessage({ type: 'success', text: mode === 'send' ? t('emailSent') : t('draftSaved') })
         setShowMailModal(false)
         setMailSubject(''); setMailBody(''); setMailSelectedIds(new Set()); setAiComposePrompt('')
       } else {
@@ -410,7 +413,7 @@ export default function ClassPage() {
   if (loading) {
     return (
       <div style={styles.loading}>
-        <p>Loading...</p>
+        <p>{tCommon('loading')}</p>
       </div>
     )
   }
@@ -418,9 +421,9 @@ export default function ClassPage() {
   if (error || !course) {
     return (
       <div style={styles.error}>
-        <p>{error || 'Class not found'}</p>
+        <p>{error || t('classNotFound')}</p>
         <button onClick={() => router.push('/classes')} style={styles.button}>
-          Back to Classes
+          {t('backToClasses')}
         </button>
       </div>
     )
@@ -433,7 +436,7 @@ export default function ClassPage() {
         <div style={styles.pageHeader}>
           <div>
             <button onClick={() => router.push('/classes')} style={styles.backButton}>
-              &larr; Back to Classes
+              &larr; {t('backToClasses')}
             </button>
             <h1 style={styles.title}>{course.name}</h1>
             {course.section && <p style={styles.section}>{course.section}</p>}
@@ -442,10 +445,10 @@ export default function ClassPage() {
         </div>
 
         {/* Manage Groups */}
-        <h2 style={styles.subtitle}>Differentiation Groups ({groups.length})</h2>
+        <h2 style={styles.subtitle}>{t('groups', { count: groups.length })}</h2>
         <div style={styles.studentActions}>
           <button onClick={() => setShowAddGroup(!showAddGroup)} style={styles.addButton}>
-            {showAddGroup ? 'Cancel' : 'Create Group'}
+            {showAddGroup ? tCommon('cancel') : t('createGroup')}
           </button>
         </div>
 
@@ -453,7 +456,7 @@ export default function ClassPage() {
           <form onSubmit={handleCreateGroup} style={styles.addForm}>
             <input
               type="text"
-              placeholder="Group Name (e.g., Advanced, ELL)"
+              placeholder={t('groupNamePlaceholder')}
               value={newGroupName}
               onChange={(e) => setNewGroupName(e.target.value)}
               style={styles.formInput}
@@ -461,12 +464,12 @@ export default function ClassPage() {
             />
             <input
               type="text"
-              placeholder="Description (optional)"
+              placeholder={t('groupDescPlaceholder')}
               value={newGroupDesc}
               onChange={(e) => setNewGroupDesc(e.target.value)}
               style={styles.formInput}
             />
-            <button type="submit" style={styles.submitButton}>Create</button>
+            <button type="submit" style={styles.submitButton}>{tCommon('create')}</button>
           </form>
         )}
 
@@ -479,19 +482,19 @@ export default function ClassPage() {
                   <button onClick={() => handleDeleteGroup(g.id)} style={styles.groupDeleteBtn}>×</button>
                 </div>
                 {g.description && <p style={styles.groupDesc}>{g.description}</p>}
-                <span style={styles.groupMemberCount}>{g.member_count} member(s)</span>
+                <span style={styles.groupMemberCount}>{t('groupMemberCount', { count: g.member_count })}</span>
               </div>
             ))}
           </div>
         )}
 
         <h2 style={{ ...styles.subtitle, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          Students ({students.length})
+          {t('students', { count: students.length })}
           <button
             onClick={() => setStudentsCollapsed(!studentsCollapsed)}
             style={{ background: 'none', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', padding: '2px 8px', color: '#666' }}
           >
-            {studentsCollapsed ? 'Show' : 'Hide'}
+            {studentsCollapsed ? t('show') : t('hide')}
           </button>
         </h2>
 
@@ -503,19 +506,19 @@ export default function ClassPage() {
 
         <div style={styles.studentActions}>
           <button onClick={() => router.push(`/agent?class_id=${courseId}`)} style={styles.importButton}>
-            Generate Assignment
+            {t('generateAssignment')}
           </button>
           <button onClick={handleImportRoster} disabled={importingRoster} style={styles.importButton}>
-            {importingRoster ? 'Importing...' : 'Import from Classroom'}
+            {importingRoster ? t('importing') : t('importFromClassroom')}
           </button>
           <button onClick={handleSyncGrades} disabled={syncingGrades} style={styles.importButton}>
-            {syncingGrades ? 'Syncing...' : 'Sync Grades'}
+            {syncingGrades ? t('syncing') : t('syncGrades')}
           </button>
           <button onClick={() => setShowMailModal(true)} style={styles.importButton}>
-            Mail Students
+            {t('mailStudents')}
           </button>
           <button onClick={() => setShowAddStudent(!showAddStudent)} style={styles.importButton}>
-            {showAddStudent ? 'Cancel' : 'Add Student'}
+            {showAddStudent ? tCommon('cancel') : t('addStudent')}
           </button>
         </div>
 
@@ -523,7 +526,7 @@ export default function ClassPage() {
           <form onSubmit={handleAddStudent} style={styles.addForm}>
             <input
               type="text"
-              placeholder="Student Name"
+              placeholder={t('studentName')}
               value={newStudentName}
               onChange={(e) => setNewStudentName(e.target.value)}
               style={styles.formInput}
@@ -531,12 +534,12 @@ export default function ClassPage() {
             />
             <input
               type="email"
-              placeholder="Email (optional)"
+              placeholder={t('studentEmail')}
               value={newStudentEmail}
               onChange={(e) => setNewStudentEmail(e.target.value)}
               style={styles.formInput}
             />
-            <button type="submit" style={styles.submitButton}>Add</button>
+            <button type="submit" style={styles.submitButton}>{tCommon('add')}</button>
           </form>
         )}
 
@@ -549,7 +552,7 @@ export default function ClassPage() {
           />
         )}
 
-        <h2 style={styles.subtitle}>Assignments</h2>
+        <h2 style={styles.subtitle}>{t('assignments')}</h2>
         <AssignmentList
           assignments={assignments}
           courseId={courseId}
@@ -581,7 +584,7 @@ export default function ClassPage() {
             <div style={styles.graderModal} onClick={e => e.stopPropagation()}>
               <div style={styles.mailModalHeader}>
                 <h2 style={{ margin: 0, fontSize: '1.1rem' }}>
-                  Grade with AI — {graderAssignment.title}
+                  {t('gradeWithAI')} — {graderAssignment.title}
                   {graderStudentFilter && <span style={{ fontWeight: 400, color: '#888', fontSize: '0.9rem' }}> · {graderStudentFilter.name}</span>}
                 </h2>
                 <button onClick={() => { setGraderAssignment(null); setGraderStudentFilter(null) }} style={styles.closeBtn}>×</button>
@@ -590,17 +593,17 @@ export default function ClassPage() {
                 {graderResults.length === 0 ? (
                   <>
                     <div style={styles.mailSection}>
-                      <label style={styles.mailLabel}>Rubric <span style={{ fontWeight: 400, color: '#888', fontSize: '0.8rem' }}>(optional — AI will generate one if left blank)</span></label>
+                      <label style={styles.mailLabel}>{t('rubricLabel')} <span style={{ fontWeight: 400, color: '#888', fontSize: '0.8rem' }}>{t('rubricNote')}</span></label>
                       <textarea
                         value={graderRubric}
                         onChange={e => setGraderRubric(e.target.value)}
                         rows={5}
                         style={styles.mailTextarea}
-                        placeholder="Leave blank to auto-generate, or enter: Accuracy 40pts, Clarity 30pts, Completeness 30pts"
+                        placeholder={t('rubricPlaceholder')}
                       />
                     </div>
                     <div style={styles.mailSection}>
-                      <label style={styles.mailLabel}>Max Points</label>
+                      <label style={styles.mailLabel}>{t('maxPoints')}</label>
                       <input
                         type="number"
                         value={graderMaxPoints}
@@ -615,7 +618,7 @@ export default function ClassPage() {
                       disabled={graderRunning}
                       style={styles.button}
                     >
-                      {graderRunning ? 'Grading...' : 'Start Grading'}
+                      {graderRunning ? t('grading') : t('startGrading')}
                     </button>
                   </>
                 ) : (
@@ -623,7 +626,7 @@ export default function ClassPage() {
                     <p style={{ color: '#666', fontSize: '0.9rem', margin: 0 }}>{graderStatus}</p>
                     {graderPlagiarism.length > 0 && (
                       <div style={styles.plagiarismBox}>
-                        <strong>Possible plagiarism detected:</strong>
+                        <strong>{t('plagiarismDetected')}</strong>
                         {graderPlagiarism.map((f, i) => (
                           <div key={i}>{f.student_a} &amp; {f.student_b} — {Math.round(f.similarity * 100)}% similar</div>
                         ))}
@@ -633,11 +636,11 @@ export default function ClassPage() {
                       <table style={styles.graderTable}>
                         <thead>
                           <tr>
-                            <th style={styles.graderTh}>Student</th>
-                            <th style={styles.graderTh}>AI Score</th>
-                            <th style={styles.graderTh}>Plagiarism</th>
-                            <th style={styles.graderTh}>Grade</th>
-                            <th style={styles.graderTh}>Feedback</th>
+                            <th style={styles.graderTh}>{t('gradeColStudent')}</th>
+                            <th style={styles.graderTh}>{t('gradeColAIScore')}</th>
+                            <th style={styles.graderTh}>{t('gradeColPlagiarism')}</th>
+                            <th style={styles.graderTh}>{t('gradeColGrade')}</th>
+                            <th style={styles.graderTh}>{t('gradeColFeedback')}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -645,8 +648,8 @@ export default function ClassPage() {
                             <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
                               <td style={styles.graderTd}>{r.student_name}</td>
                               <td style={styles.graderTd}>
-                                {r.no_submission ? <span style={{ color: '#888' }}>No submission</span>
-                                  : r.no_text ? <span style={{ color: '#888', fontSize: '0.8rem' }} title={r.note}>No text</span>
+                                {r.no_submission ? <span style={{ color: '#888' }}>{t('noSubmission')}</span>
+                                  : r.no_text ? <span style={{ color: '#888', fontSize: '0.8rem' }} title={r.note}>{t('noText')}</span>
                                   : (
                                     <span style={{ ...styles.aiScoreBadge, background: aiScoreColor(r.ai_score) }}
                                       title={r.ai_reasoning}>
@@ -674,7 +677,7 @@ export default function ClassPage() {
                         </tbody>
                       </table>
                     </div>
-                    {graderRunning && <p style={{ color: '#666', fontSize: '0.85rem', margin: 0 }}>Grading in progress...</p>}
+                    {graderRunning && <p style={{ color: '#666', fontSize: '0.85rem', margin: 0 }}>{t('gradingProgress')}</p>}
                   </>
                 )}
               </div>
@@ -686,12 +689,12 @@ export default function ClassPage() {
           <div style={styles.modalOverlay} onClick={() => setShowMailModal(false)}>
             <div style={styles.mailModal} onClick={e => e.stopPropagation()}>
               <div style={styles.mailModalHeader}>
-                <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Mail Students</h2>
+                <h2 style={{ margin: 0, fontSize: '1.1rem' }}>{t('mailStudents')}</h2>
                 <button onClick={() => setShowMailModal(false)} style={styles.closeBtn}>×</button>
               </div>
               <div style={styles.mailModalBody}>
                 <div style={styles.mailSection}>
-                  <label style={styles.mailLabel}>Recipients</label>
+                  <label style={styles.mailLabel}>{t('recipients')}</label>
                   <div style={styles.studentCheckboxList}>
                     <label style={styles.checkboxRow}>
                       <input type="checkbox"
@@ -700,7 +703,7 @@ export default function ClassPage() {
                           const withEmail = students.filter(s => s.email)
                           setMailSelectedIds(mailSelectedIds.size === withEmail.length ? new Set() : new Set(withEmail.map(s => s.id)))
                         }}
-                      /> Select all ({students.filter(s => s.email).length} with email)
+                      /> {t('selectAll', { count: students.filter(s => s.email).length })}
                     </label>
                     {students.filter(s => s.email).map(s => (
                       <label key={s.id} style={styles.checkboxRow}>
@@ -714,41 +717,41 @@ export default function ClassPage() {
                   </div>
                 </div>
                 <div style={styles.mailSection}>
-                  <label style={styles.mailLabel}>Have AI draft this email</label>
+                  <label style={styles.mailLabel}>{t('aiDraftLabel')}</label>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <input type="text" placeholder="e.g. remind them the essay is due Friday"
+                    <input type="text" placeholder={t('aiDraftPlaceholder')}
                       value={aiComposePrompt} onChange={e => setAiComposePrompt(e.target.value)}
                       style={{ ...styles.mailInput, flex: 1 }}
                     />
                     <button onClick={handleAiCompose} disabled={!aiComposePrompt || composingMail} style={styles.aiDraftBtn}>
-                      {composingMail ? 'Drafting...' : 'Draft with AI'}
+                      {composingMail ? t('drafting') : t('draftWithAI')}
                     </button>
                   </div>
                 </div>
                 <div style={styles.mailSection}>
-                  <label style={styles.mailLabel}>Subject</label>
+                  <label style={styles.mailLabel}>{t('subject')}</label>
                   <input type="text" value={mailSubject} onChange={e => setMailSubject(e.target.value)}
-                    style={styles.mailInput} placeholder="Subject" />
+                    style={styles.mailInput} placeholder={t('subject')} />
                 </div>
                 <div style={styles.mailSection}>
-                  <label style={styles.mailLabel}>Body</label>
+                  <label style={styles.mailLabel}>{t('body')}</label>
                   <textarea value={mailBody} onChange={e => setMailBody(e.target.value)}
-                    style={styles.mailTextarea} rows={8} placeholder="Email body..." />
+                    style={styles.mailTextarea} rows={8} placeholder={t('bodyPlaceholder')} />
                 </div>
                 <div style={styles.mailActions}>
                   <button onClick={() => handleMailStudents('send')}
                     disabled={!mailSubject || !mailBody || mailSelectedIds.size === 0 || sendingMail}
                     style={styles.sendNowBtn}>
-                    {sendingMail ? 'Sending...' : 'Send Now'}
+                    {sendingMail ? t('sending') : t('sendNow')}
                   </button>
                   <button onClick={() => handleMailStudents('draft')}
                     disabled={!mailSubject || !mailBody || mailSelectedIds.size === 0 || sendingMail}
                     style={styles.saveDraftBtn}>
-                    Save to Drafts
+                    {t('saveToDrafts')}
                   </button>
                 </div>
                 <p style={{ fontSize: '0.8rem', color: '#888', margin: 0 }}>
-                  Students can reply to this email. AI-drafted emails are saved as drafts — review in Gmail before sending.
+                  {t('mailDisclaimer')}
                 </p>
               </div>
             </div>
