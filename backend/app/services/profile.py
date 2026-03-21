@@ -1,6 +1,13 @@
 import json
 from app.services.database import get_db
 
+DEFAULT_SKILLS = {
+    "classroom_post": True,
+    "gmail": False,
+    "calendar": False,
+    "drive_print": False,
+}
+
 
 class ProfileService:
     def __init__(self, user_id: str):
@@ -17,6 +24,8 @@ class ProfileService:
             p = dict(row)
             p["subjects"] = json.loads(p.get("subjects") or "[]")
             p["grade_levels"] = json.loads(p.get("grade_levels") or "[]")
+            stored = json.loads(p.get("skills_enabled") or "{}")
+            p["skills_enabled"] = {**DEFAULT_SKILLS, **stored}
             # Never return raw API keys to callers — use get_api_key() / get_gemini_api_key() instead
             p["has_api_key"] = bool(p.pop("openai_api_key", None))
             p["has_gemini_key"] = bool(p.pop("gemini_api_key", None))
@@ -66,6 +75,8 @@ class ProfileService:
         api_key = data.get("openai_api_key", "")
         gemini_key = data.get("gemini_api_key", "")
         ai_provider = data.get("ai_provider", "")
+        skills_raw = data.get("skills_enabled")
+        skills_json = json.dumps(skills_raw) if isinstance(skills_raw, dict) else ""
 
         db = get_db()
         try:
@@ -89,6 +100,7 @@ class ProfileService:
                         gemini_api_key = CASE WHEN ? = '' THEN gemini_api_key ELSE ? END,
                         ai_provider = CASE WHEN ? = '' THEN ai_provider ELSE ? END,
                         language = CASE WHEN ? = '' THEN language ELSE ? END,
+                        skills_enabled = CASE WHEN ? = '' THEN skills_enabled ELSE ? END,
                         onboarding_complete = 1,
                         updated_at = datetime('now')
                     WHERE user_id = ?
@@ -104,6 +116,7 @@ class ProfileService:
                     gemini_key, gemini_key,
                     ai_provider, ai_provider,
                     language, language,
+                    skills_json, skills_json,
                     self.user_id,
                 ))
             else:
@@ -111,8 +124,8 @@ class ProfileService:
                     INSERT INTO user_profiles
                         (user_id, display_name, school_org, role, subjects,
                          grade_levels, teaching_style, about, openai_api_key,
-                         gemini_api_key, ai_provider, language, onboarding_complete)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                         gemini_api_key, ai_provider, language, skills_enabled, onboarding_complete)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                 """, (
                     self.user_id,
                     data.get("display_name", ""),
@@ -126,12 +139,25 @@ class ProfileService:
                     gemini_key,
                     ai_provider or "openai",
                     language or "English",
+                    skills_json or json.dumps(DEFAULT_SKILLS),
                 ))
             db.commit()
         finally:
             db.close()
 
         return self.get_profile()
+
+    def get_skills(self) -> dict:
+        """Return the user's enabled skills, merged with defaults."""
+        db = get_db()
+        try:
+            row = db.execute(
+                "SELECT skills_enabled FROM user_profiles WHERE user_id = ?", (self.user_id,)
+            ).fetchone()
+            stored = json.loads((row["skills_enabled"] if row else None) or "{}")
+            return {**DEFAULT_SKILLS, **stored}
+        finally:
+            db.close()
 
     def get_language(self) -> str:
         """Return the user's preferred language, default English."""

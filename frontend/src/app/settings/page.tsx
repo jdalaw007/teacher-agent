@@ -32,6 +32,7 @@ interface FormData {
   gemini_api_key: string
   ai_provider: string
   language: string
+  skills_enabled: Record<string, boolean>
 }
 
 export default function SettingsPage() {
@@ -45,6 +46,7 @@ export default function SettingsPage() {
     display_name: '', school_org: '', role: 'Teacher',
     subjects: [], grade_levels: [], teaching_style: '', about: '',
     openai_api_key: '', gemini_api_key: '', ai_provider: 'openai', language: 'English',
+    skills_enabled: { classroom_post: true, gmail: false, calendar: false, drive_print: false },
   })
   const [subjectInput, setSubjectInput] = useState('')
   const [keyStatus, setKeyStatus] = useState<'idle' | 'testing' | 'valid' | 'invalid' | 'saved'>('idle')
@@ -86,6 +88,10 @@ export default function SettingsPage() {
             gemini_api_key: '',
             ai_provider: data.ai_provider || 'openai',
             language: data.language || 'English',
+            skills_enabled: {
+              classroom_post: true, gmail: false, calendar: false, drive_print: false,
+              ...(data.skills_enabled || {}),
+            },
           })
           setHasExistingKey(!!data.has_api_key)
           setHasGeminiKey(!!data.has_gemini_key)
@@ -378,6 +384,77 @@ export default function SettingsPage() {
         </div>
 
         <div style={s.section}>
+          <h2 style={s.sectionTitle}>Skills</h2>
+          <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '20px', lineHeight: '1.5' }}>
+            Choose which capabilities the AI agent can use. The agent can only take actions you explicitly enable.
+          </p>
+
+          {/* Core skills — always on */}
+          <div style={s.skillGroup}>
+            <div style={s.skillGroupLabel}>Core — always active</div>
+            {[
+              { label: 'Document Corpus', desc: 'Search and read your uploaded documents' },
+              { label: 'Student Profiles', desc: 'Access student notes, groups, and submission history' },
+              { label: 'Google Classroom (read)', desc: 'Read your classes, assignments, and rosters' },
+              { label: 'Conversation Memory', desc: 'Remember past conversations and teaching strategies' },
+            ].map(skill => (
+              <div key={skill.label} style={s.skillRow}>
+                <div style={s.skillInfo}>
+                  <span style={s.skillLabel}>{skill.label}</span>
+                  <span style={s.skillDesc}>{skill.desc}</span>
+                </div>
+                <div style={{ ...s.skillBadge, backgroundColor: '#e6f4ea', color: '#34a853' }}>Active</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Toggleable skills */}
+          <div style={s.skillGroup}>
+            <div style={s.skillGroupLabel}>Optional skills</div>
+            {[
+              {
+                key: 'classroom_post',
+                label: 'Post to Google Classroom',
+                desc: 'Let the agent create and post assignments and announcements',
+              },
+              {
+                key: 'gmail',
+                label: 'Gmail',
+                desc: 'Read emails, archive, and organise your inbox',
+                comingSoon: false,
+              },
+              {
+                key: 'calendar',
+                label: 'Google Calendar',
+                desc: 'View upcoming events and schedule context',
+                comingSoon: false,
+              },
+              {
+                key: 'drive_print',
+                label: 'Print from Drive',
+                desc: 'Search Drive and print documents to your local printer',
+              },
+            ].map(skill => {
+              const enabled = !!form.skills_enabled[skill.key]
+              return (
+                <div key={skill.key} style={s.skillRow}>
+                  <div style={s.skillInfo}>
+                    <span style={s.skillLabel}>{skill.label}</span>
+                    <span style={s.skillDesc}>{skill.desc}</span>
+                  </div>
+                  <button
+                    style={{ ...s.skillToggle, ...(enabled ? s.skillToggleOn : s.skillToggleOff) }}
+                    onClick={() => update('skills_enabled', { ...form.skills_enabled, [skill.key]: !enabled })}
+                  >
+                    {enabled ? 'On' : 'Off'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <div style={s.section}>
           <h2 style={s.sectionTitle}>{t('yourData')}</h2>
           <p style={{ fontSize: '0.88rem', color: '#666', marginBottom: '16px', lineHeight: '1.6' }}>
             {t('gdprDesc')}
@@ -602,4 +679,14 @@ const s: { [k: string]: React.CSSProperties } = {
   helpFooter: { display: 'flex', alignItems: 'center', gap: '8px', padding: '20px 0 8px', justifyContent: 'center' },
   helpLink: { fontSize: '0.85rem', color: '#1a73e8', textDecoration: 'none' },
   helpDivider: { color: '#ccc', fontSize: '0.85rem' },
+  skillGroup: { marginBottom: '16px' },
+  skillGroupLabel: { fontSize: '0.75rem', fontWeight: 700, color: '#999', textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: '10px' },
+  skillRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #f0f0f0' },
+  skillInfo: { display: 'flex', flexDirection: 'column' as const, gap: '2px' },
+  skillLabel: { fontSize: '0.92rem', fontWeight: 600, color: '#333' },
+  skillDesc: { fontSize: '0.82rem', color: '#888' },
+  skillBadge: { fontSize: '0.78rem', fontWeight: 600, padding: '3px 10px', borderRadius: '12px' },
+  skillToggle: { padding: '5px 18px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, minWidth: '52px' },
+  skillToggleOn: { backgroundColor: '#1a73e8', color: 'white' },
+  skillToggleOff: { backgroundColor: '#f0f0f0', color: '#888' },
 }

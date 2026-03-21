@@ -27,6 +27,7 @@ class SaveProfileRequest(BaseModel):
     gemini_api_key: Optional[str] = ""
     ai_provider: Optional[str] = ""
     language: Optional[str] = ""
+    skills_enabled: Optional[dict] = None
 
 
 class TestKeyRequest(BaseModel):

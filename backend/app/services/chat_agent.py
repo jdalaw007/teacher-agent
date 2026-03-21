@@ -366,6 +366,26 @@ TOOL_DEFINITIONS = [
 ]
 
 
+# Tools that are always available regardless of skills settings
+_CORE_TOOLS = {
+    "list_corpus_documents", "read_corpus_document", "search_corpus",
+    "get_student_data", "get_class_assignments", "get_class_roster",
+    "search_memories", "log_strategy", "navigate", "set_language",
+    "get_documentation",
+}
+
+# Maps skill key → set of tool names it unlocks
+_SKILL_TOOL_MAP = {
+    "classroom_post": {"post_assignment", "post_announcement"},
+    "gmail": {
+        "get_emails", "get_email_detail", "read_email_attachment",
+        "trash_email", "archive_email", "file_email", "list_gmail_labels",
+    },
+    "calendar": {"get_calendar_events"},
+    "drive_print": {"print_document"},
+}
+
+
 class ChatAgentService:
     def __init__(self, teacher_user_id: str, access_token: str):
         self.teacher_user_id = teacher_user_id
@@ -392,6 +412,14 @@ class ChatAgentService:
             api_key = user_key or settings.openai_api_key
             if api_key and api_key != "your-api-key-here":
                 self.client = OpenAI(api_key=api_key)
+
+        # Build allowed tool set from core + enabled skills
+        skills = ps.get_skills()
+        allowed = set(_CORE_TOOLS)
+        for skill, enabled in skills.items():
+            if enabled and skill in _SKILL_TOOL_MAP:
+                allowed.update(_SKILL_TOOL_MAP[skill])
+        self.tools = [t for t in TOOL_DEFINITIONS if t["function"]["name"] in allowed]
 
     def _assemble_context(self, conversation_id: str, user_message: str) -> str:
         """Auto-gather context for the conversation."""
@@ -907,7 +935,7 @@ class ChatAgentService:
                 stream = self.client.chat.completions.create(
                     model=self.model,
                     messages=messages,
-                    tools=TOOL_DEFINITIONS,
+                    tools=self.tools,
                     stream=True,
                     max_tokens=4000,
                 )
