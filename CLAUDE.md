@@ -4,6 +4,15 @@ AI-powered teaching assistant integrating Google Workspace with an AI chat agent
 
 ---
 
+## CRITICAL: Update the Wiki on Every Push
+
+After every `git push`, update any affected wiki pages in the wiki repo and push them too.
+
+Wiki repo location: `C:/Users/jdlaw/AppData/Local/Temp/teacher-agent-wiki/`
+If missing, re-clone: `git clone https://github.com/jdalaw007/teacher-agent.wiki.git C:/Users/jdlaw/AppData/Local/Temp/teacher-agent-wiki`
+
+---
+
 ## CRITICAL: Starting the Servers
 
 **Always use the startup script — never start servers manually:**

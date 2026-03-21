@@ -68,6 +68,7 @@ export default function AgentPage() {
   // Content checker state
   const [checkResult, setCheckResult] = useState('')
   const [checkStatus, setCheckStatus] = useState<'idle' | 'checking' | 'done'>('idle')
+  const [checkAndPost, setCheckAndPost] = useState(false)  // true = check was triggered by Post button
 
   // Assignment history (saved assignments)
   const [savedAssignments, setSavedAssignments] = useState<{
@@ -323,6 +324,21 @@ export default function AgentPage() {
     setPostPoints('')
     setPostDueDate('')
     setPostAsDraft(false)
+    setCheckAndPost(true)
+    // If check already done, go straight to modal; otherwise auto-run the check
+    if (checkStatus === 'done' && checkResult) {
+      setShowPostModal(true)
+      setCheckAndPost(false)
+    } else {
+      // Scroll check panel into view and run check
+      setCheckResult('')
+      setCheckStatus('idle')
+      setTimeout(() => handleCheckContent(), 50)
+    }
+  }
+
+  const proceedToPost = () => {
+    setCheckAndPost(false)
     setShowPostModal(true)
   }
 
@@ -1167,7 +1183,7 @@ export default function AgentPage() {
                       <div style={styles.checkPanel}>
                         <div style={styles.checkHeader}>
                           <span>{t('contentReview')}</span>
-                          {checkStatus === 'done' && (
+                          {checkStatus === 'done' && !checkAndPost && (
                             <button
                               onClick={() => { setCheckResult(''); setCheckStatus('idle') }}
                               style={styles.checkClose}
@@ -1182,6 +1198,24 @@ export default function AgentPage() {
                           )}
                           <pre style={styles.checkPre}>{checkResult}</pre>
                         </div>
+                        {checkAndPost && checkStatus === 'done' && (
+                          <div style={styles.checkFooter}>
+                            <span style={{fontSize: '0.85rem', color: '#666'}}>
+                              Review the feedback above before posting.
+                            </span>
+                            <div style={{display: 'flex', gap: '8px'}}>
+                              <button
+                                onClick={() => { setCheckAndPost(false); setCheckResult(''); setCheckStatus('idle') }}
+                                style={styles.checkCancelBtn}
+                              >
+                                Cancel
+                              </button>
+                              <button onClick={proceedToPost} style={styles.checkProceedBtn}>
+                                Proceed to Post →
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </>
@@ -2295,5 +2329,35 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.9rem',
     lineHeight: '1.6',
     color: '#333',
+  },
+  checkFooter: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '10px 14px',
+    borderTop: '1px solid #e0e0e0',
+    backgroundColor: '#f5f5f5',
+    gap: '12px',
+  },
+  checkProceedBtn: {
+    padding: '8px 20px',
+    backgroundColor: '#1a73e8',
+    color: 'white',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '0.9rem',
+    fontWeight: 600,
+    whiteSpace: 'nowrap' as const,
+  },
+  checkCancelBtn: {
+    padding: '8px 16px',
+    backgroundColor: 'white',
+    color: '#666',
+    border: '1px solid #ddd',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '0.9rem',
+    whiteSpace: 'nowrap' as const,
   },
 }
