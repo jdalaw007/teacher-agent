@@ -19,7 +19,6 @@ export default function IntlProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     const lang = localStorage.getItem('language') || 'English'
     const loc = LANG_MAP[lang] || 'en'
-    console.log('[IntlProvider] language from localStorage:', lang, '→ locale:', loc)
     setLocale(loc)
   }, [])
 

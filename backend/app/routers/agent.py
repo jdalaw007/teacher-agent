@@ -4,6 +4,7 @@ from typing import Optional
 from app.services.agent import AgentService
 from app.services.student import StudentService
 from app.services.token_store import get_user_id_from_token
+from app.limiter import limiter
 from datetime import date
 import hashlib
 import json
@@ -99,6 +100,7 @@ class ImproveAssignmentRequest(BaseModel):
 
 
 @router.post("/generate")
+@limiter.limit("20/minute")
 async def generate_assignment(request: Request, body: GenerateAssignmentRequest):
     """Generate an assignment using AI and corpus materials."""
     user_id = get_user_id_from_request(request)
@@ -141,6 +143,7 @@ async def generate_assignment(request: Request, body: GenerateAssignmentRequest)
 
 
 @router.post("/ask")
+@limiter.limit("20/minute")
 async def ask_question(request: Request, body: AskQuestionRequest):
     """Ask the AI a question using corpus materials."""
     user_id = get_user_id_from_request(request)
@@ -155,6 +158,7 @@ async def ask_question(request: Request, body: AskQuestionRequest):
 
 
 @router.post("/improve")
+@limiter.limit("20/minute")
 async def improve_assignment(request: Request, body: ImproveAssignmentRequest):
     """Get AI suggestions to improve an assignment."""
     user_id = get_user_id_from_request(request)

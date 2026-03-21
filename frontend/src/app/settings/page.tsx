@@ -185,10 +185,8 @@ export default function SettingsPage() {
       if (form.openai_api_key) { setKeyStatus('saved'); setHasExistingKey(true) }
       if (form.gemini_api_key) { setGeminiKeyStatus('saved'); setHasGeminiKey(true) }
       const prevLang = localStorage.getItem('language')
-      console.log('[Settings] prevLang:', prevLang, 'new lang:', form.language)
       localStorage.setItem('language', form.language)
       if (prevLang !== form.language) {
-        console.log('[Settings] language changed, reloading...')
         window.location.reload()
         return
       }

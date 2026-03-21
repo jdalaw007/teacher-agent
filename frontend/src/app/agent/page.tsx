@@ -750,7 +750,6 @@ export default function AgentPage() {
 
       if (res.ok) {
         const data = await res.json()
-        console.log('Generate response:', data)
         setGeneratedAssignment(data.assignment || t('noContentGenerated'))
         setSelectedAssignmentId(null)
         const savedNote = data.saved_filename ? t('savedToFiles', { name: data.saved_filename }) : ''

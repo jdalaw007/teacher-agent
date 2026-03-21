@@ -3,6 +3,7 @@ import json
 import hashlib
 from pathlib import Path
 from app.services.token_store import get_user_id_from_token
+from app.limiter import limiter
 
 router = APIRouter()
 
@@ -58,6 +59,7 @@ async def list_documents(request: Request, class_id: str):
 
 
 @router.post("/upload")
+@limiter.limit("20/minute")
 async def upload_document(
     request: Request,
     file: UploadFile = File(...),
@@ -121,6 +123,7 @@ async def upload_document(
 
 
 @router.post("/upload-text")
+@limiter.limit("20/minute")
 async def upload_text(
     request: Request,
     class_id: str = Form(...),

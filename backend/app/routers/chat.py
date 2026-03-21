@@ -5,6 +5,7 @@ from typing import Optional
 from app.services.chat_agent import ChatAgentService
 from app.services import memory
 from app.services.token_store import get_user_id_from_token
+from app.limiter import limiter
 
 router = APIRouter()
 
@@ -78,6 +79,7 @@ async def delete_conversation(conversation_id: str, request: Request):
 
 
 @router.post("/conversations/{conversation_id}/messages")
+@limiter.limit("30/minute")
 async def send_message(conversation_id: str, request: Request, body: SendMessageRequest):
     """Send a message and get a streaming SSE response."""
     user_id = _get_user_id(request)

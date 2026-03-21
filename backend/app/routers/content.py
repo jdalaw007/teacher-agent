@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import Optional
 from app.services.token_store import get_user_id_from_token
 from app.services.content_checker import ContentCheckerService
+from app.limiter import limiter
 
 router = APIRouter()
 
@@ -24,6 +25,7 @@ class CheckRequest(BaseModel):
 
 
 @router.post("/check")
+@limiter.limit("20/minute")
 async def check_content(request: Request, body: CheckRequest):
     """Stream a content review as SSE."""
     user_id = _get_user_id(request)

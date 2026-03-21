@@ -9,6 +9,7 @@ from app.services.database import get_db
 from app.services.google_auth import GoogleAuthService
 from app.services.token_store import get_user_id_from_token
 from app.config import get_settings
+from app.limiter import limiter
 
 router = APIRouter()
 settings = get_settings()
@@ -143,6 +144,7 @@ async def get_suggested_prompts(request: Request):
 
 
 @router.get("/greeting")
+@limiter.limit("10/minute")
 async def get_greeting(request: Request):
     """Stream a personalized greeting as SSE."""
     user_id = _get_user_id(request)
