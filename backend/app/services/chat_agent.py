@@ -675,22 +675,39 @@ class ChatAgentService:
                 for mat in full.get("materials", []):
                     if "driveFile" in mat:
                         df = mat["driveFile"]["driveFile"]
-                        mime = df.get("mimeType", "")
+                        file_id = df.get("id")
                         entry = {
                             "title": df.get("title"),
                             "link": df.get("alternateLink"),
-                            "type": mime,
                         }
-                        # Read content for Google Docs and plain text files
-                        if mime in (
-                            "application/vnd.google-apps.document",
-                            "application/vnd.google-apps.spreadsheet",
-                            "text/plain",
-                        ):
-                            try:
-                                entry["content"] = drive.export_as_text(df["id"], mime)[:3000]
-                            except Exception:
-                                entry["content"] = "(could not read content)"
+                        # Classroom API doesn't return mimeType — fetch it from Drive
+                        try:
+                            file_meta = drive.get_file(file_id)
+                            mime = file_meta.get("mimeType", "")
+                            entry["type"] = mime
+                        except Exception:
+                            mime = ""
+                            entry["type"] = "unknown"
+
+                        # Read content based on actual mimeType
+                        try:
+                            if mime in (
+                                "application/vnd.google-apps.document",
+                                "application/vnd.google-apps.spreadsheet",
+                            ):
+                                entry["content"] = drive.export_as_text(file_id, mime)[:4000]
+                            elif mime == "text/plain":
+                                raw = drive.download_file(file_id)
+                                entry["content"] = raw.decode("utf-8", errors="replace")[:4000]
+                            elif mime == "application/pdf":
+                                import io
+                                from pypdf import PdfReader
+                                raw = drive.download_file(file_id)
+                                reader = PdfReader(io.BytesIO(raw))
+                                text = "\n".join(p.extract_text() or "" for p in reader.pages)
+                                entry["content"] = text[:4000]
+                        except Exception as e:
+                            entry["content"] = f"(could not read content: {e})"
                         result["materials"].append(entry)
                     elif "link" in mat:
                         result["materials"].append({"title": mat["link"].get("title"), "url": mat["link"].get("url"), "type": "link"})
