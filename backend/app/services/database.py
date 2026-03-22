@@ -238,6 +238,8 @@ def init_db():
         "ALTER TABLE user_profiles ADD COLUMN gemini_api_key TEXT DEFAULT ''",
         "ALTER TABLE user_profiles ADD COLUMN ai_provider TEXT DEFAULT 'openai'",
         "ALTER TABLE user_profiles ADD COLUMN skills_enabled TEXT DEFAULT '{}'",
+        "ALTER TABLE grader_results ADD COLUMN student_user_id TEXT",
+        "ALTER TABLE grader_results ADD COLUMN submission_id TEXT",
     ]:
         try:
             conn.execute(migration)

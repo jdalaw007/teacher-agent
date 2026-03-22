@@ -86,6 +86,8 @@ export default function ClassPage() {
   const [graderResults, setGraderResults] = useState<any[]>([])
   const [graderPlagiarism, setGraderPlagiarism] = useState<any[]>([])
   const [graderStudentFilter, setGraderStudentFilter] = useState<{ userId: string; name: string } | null>(null)
+  const [pushingGrades, setPushingGrades] = useState(false)
+  const [pushGradeResult, setPushGradeResult] = useState<string | null>(null)
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -404,6 +406,43 @@ export default function ClassPage() {
     }
   }
 
+  const handleExportCsv = () => {
+    if (!graderAssignment) return
+    const token = localStorage.getItem('token')
+    const params = new URLSearchParams({ course_id: courseId, assignment_id: graderAssignment.id })
+    const url = `${API_URL}/grader/export-csv?${params}`
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.blob())
+      .then(blob => {
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(blob)
+        a.download = `grades_${graderAssignment.title.replace(/\s+/g, '_')}.csv`
+        a.click()
+      })
+  }
+
+  const handlePushGrades = async () => {
+    if (!graderAssignment) return
+    const token = localStorage.getItem('token')
+    setPushingGrades(true)
+    setPushGradeResult(null)
+    try {
+      const res = await fetch(`${API_URL}/grader/push-grades`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ course_id: courseId, assignment_id: graderAssignment.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || 'Failed')
+      const msg = `Pushed ${data.pushed} grade(s) to Classroom as draft.${data.skipped ? ` ${data.skipped} skipped (no submission ID).` : ''}${data.errors?.length ? ` ${data.errors.length} error(s).` : ''}`
+      setPushGradeResult(msg)
+    } catch (e: any) {
+      setPushGradeResult(`Error: ${e.message}`)
+    } finally {
+      setPushingGrades(false)
+    }
+  }
+
   const aiScoreColor = (score: number) => {
     if (score <= 3) return '#34a853'
     if (score <= 6) return '#f9ab00'
@@ -678,6 +717,21 @@ export default function ClassPage() {
                       </table>
                     </div>
                     {graderRunning && <p style={{ color: '#666', fontSize: '0.85rem', margin: 0 }}>{t('gradingProgress')}</p>}
+                    {graderResults.length > 0 && !graderRunning && (
+                      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <button onClick={handleExportCsv} style={styles.exportCsvBtn}>
+                          Export CSV
+                        </button>
+                        <button onClick={handlePushGrades} disabled={pushingGrades} style={styles.pushGradesBtn}>
+                          {pushingGrades ? 'Pushing...' : 'Push Draft Grades to Classroom'}
+                        </button>
+                        {pushGradeResult && (
+                          <span style={{ fontSize: '0.8rem', color: pushGradeResult.startsWith('Error') ? '#ea4335' : '#34a853' }}>
+                            {pushGradeResult}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -965,4 +1019,6 @@ const styles: { [key: string]: React.CSSProperties } = {
   aiScoreBadge: { display: 'inline-block', padding: '2px 8px', borderRadius: '12px', color: '#fff', fontWeight: 600, fontSize: '0.8rem' },
   plagBadge: { display: 'inline-block', padding: '2px 8px', borderRadius: '4px', background: '#f8d7da', color: '#dc3545', fontWeight: 700, fontSize: '0.8rem' },
   plagiarismBox: { padding: '10px 14px', background: '#fff3cd', border: '1px solid #ffc107', borderRadius: '6px', color: '#856404', fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '4px' },
+  exportCsvBtn: { padding: '6px 14px', background: '#fff', border: '1px solid #ccc', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 },
+  pushGradesBtn: { padding: '6px 14px', background: '#1a73e8', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 },
 }

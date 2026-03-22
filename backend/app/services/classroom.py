@@ -103,6 +103,22 @@ class ClassroomService:
         )
         return results.get("students", [])
 
+    def patch_submission_grade(self, course_id: str, coursework_id: str, submission_id: str, draft_grade: float) -> dict:
+        """Set the draft grade on a student submission."""
+        return (
+            self.service.courses()
+            .courseWork()
+            .studentSubmissions()
+            .patch(
+                courseId=course_id,
+                courseWorkId=coursework_id,
+                id=submission_id,
+                updateMask="draftGrade",
+                body={"draftGrade": draft_grade},
+            )
+            .execute()
+        )
+
     def create_draft_assignment(
         self,
         course_id: str,

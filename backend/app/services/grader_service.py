@@ -72,20 +72,24 @@ def _check_plagiarism(texts_by_student: dict) -> list:
 
 def _save_result(teacher_user_id: str, course_id: str, assignment_id: str, assignment_title: str,
                  student_name: str, ai_score: int, ai_reasoning: str, grade: int, max_points: int,
-                 feedback: str, plagiarism_flagged: bool) -> None:
+                 feedback: str, plagiarism_flagged: bool,
+                 student_user_id: str = "", submission_id: str = "") -> None:
     try:
         db = get_db()
         db.execute(
             """INSERT INTO grader_results
                (teacher_user_id, course_id, assignment_id, assignment_title, student_name,
-                ai_score, ai_reasoning, grade, max_points, feedback, plagiarism_flagged, graded_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                ai_score, ai_reasoning, grade, max_points, feedback, plagiarism_flagged, graded_at,
+                student_user_id, submission_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, ?)
                ON CONFLICT(teacher_user_id, course_id, assignment_id, student_name)
                DO UPDATE SET ai_score=excluded.ai_score, ai_reasoning=excluded.ai_reasoning,
                    grade=excluded.grade, max_points=excluded.max_points, feedback=excluded.feedback,
-                   plagiarism_flagged=excluded.plagiarism_flagged, graded_at=excluded.graded_at""",
+                   plagiarism_flagged=excluded.plagiarism_flagged, graded_at=excluded.graded_at,
+                   student_user_id=excluded.student_user_id, submission_id=excluded.submission_id""",
             (teacher_user_id, course_id, assignment_id, assignment_title, student_name,
-             ai_score, ai_reasoning, grade, max_points, feedback, int(plagiarism_flagged))
+             ai_score, ai_reasoning, grade, max_points, feedback, int(plagiarism_flagged),
+             student_user_id, submission_id)
         )
         db.commit()
         db.close()
@@ -179,11 +183,14 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
         # Extract text per student
         texts_by_student: dict[str, str] = {}
         sub_map: dict[str, str | None] = {}  # name -> text or None (no submission)
+        sub_ids: dict[str, tuple[str, str]] = {}  # name -> (student_user_id, submission_id)
 
         for sub in submissions:
             uid = sub.get("userId", "")
+            sub_id = sub.get("id", "")
             name = student_names.get(uid, f"Student ({uid[-6:]})")
             state = sub.get("state", "")
+            sub_ids[name] = (uid, sub_id)
 
             if state not in ("TURNED_IN", "RETURNED"):
                 sub_map[name] = None
@@ -237,6 +244,7 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                 )
                 result = json.loads(response.choices[0].message.content)
                 flagged = name in plagiarism_students
+                uid_sid = sub_ids.get(name, ("", ""))
                 _save_result(
                     teacher_user_id=user_id,
                     course_id=course_id,
@@ -249,6 +257,8 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                     max_points=max_points,
                     feedback=result.get("feedback", ""),
                     plagiarism_flagged=flagged,
+                    student_user_id=uid_sid[0],
+                    submission_id=uid_sid[1],
                 )
                 yield sse({
                     "type": "student_result",

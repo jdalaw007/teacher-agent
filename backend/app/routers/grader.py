@@ -1,5 +1,7 @@
+import csv
+import io
 from fastapi import APIRouter, Request, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel
 from app.services.token_store import get_user_id_from_token
 from app.services import grader_service
@@ -60,6 +62,103 @@ async def get_submission_preview(request: Request, course_id: str, assignment_id
         return {"text": text or None, "state": sub.get("state", "")}
     except Exception as e:
         return {"text": None, "error": str(e)}
+
+
+@router.get("/export-csv")
+async def export_grader_csv(request: Request, course_id: str, assignment_id: str):
+    """Download grader results as a CSV file."""
+    auth = request.headers.get("Authorization", "")
+    token = auth.split(" ")[1] if auth.startswith("Bearer ") else ""
+    user_id = get_user_id_from_token(token)
+    db = get_db()
+    try:
+        rows = db.execute(
+            "SELECT student_name, grade, max_points, ai_score, feedback, plagiarism_flagged FROM grader_results "
+            "WHERE teacher_user_id = ? AND course_id = ? AND assignment_id = ? ORDER BY student_name",
+            (user_id, course_id, assignment_id),
+        ).fetchall()
+    finally:
+        db.close()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Student", "Grade", "Max Points", "AI Score", "Feedback", "Plagiarism Flag"])
+    for r in rows:
+        writer.writerow([
+            r["student_name"],
+            r["grade"] if r["grade"] is not None else "",
+            r["max_points"] if r["max_points"] is not None else "",
+            r["ai_score"] if r["ai_score"] is not None else "",
+            r["feedback"] or "",
+            "Yes" if r["plagiarism_flagged"] else "No",
+        ])
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=grades_{assignment_id}.csv"},
+    )
+
+
+class PushGradesRequest(BaseModel):
+    course_id: str
+    assignment_id: str
+
+
+@router.post("/push-grades")
+async def push_draft_grades(body: PushGradesRequest, request: Request):
+    """Push AI-assigned draft grades back to Google Classroom."""
+    auth = request.headers.get("Authorization", "")
+    token = auth.split(" ")[1] if auth.startswith("Bearer ") else ""
+    user_id = get_user_id_from_token(token)
+    db = get_db()
+    try:
+        rows = db.execute(
+            "SELECT student_name, grade, submission_id FROM grader_results "
+            "WHERE teacher_user_id = ? AND course_id = ? AND assignment_id = ? AND grade IS NOT NULL",
+            (user_id, body.course_id, body.assignment_id),
+        ).fetchall()
+    finally:
+        db.close()
+
+    if not rows:
+        return {"pushed": 0, "skipped": 0, "errors": []}
+
+    from app.services.classroom import ClassroomService
+    classroom = ClassroomService(token)
+
+    # For rows without a stored submission_id, fall back to name-matching from Classroom
+    name_to_sub_id: dict[str, str] = {}
+    needs_lookup = [r for r in rows if not r["submission_id"]]
+    if needs_lookup:
+        try:
+            submissions = classroom.list_submissions(body.course_id, body.assignment_id)
+            students = classroom.list_students(body.course_id)
+            uid_to_name = {
+                s["userId"]: s.get("profile", {}).get("name", {}).get("fullName", "")
+                for s in students
+            }
+            for sub in submissions:
+                uid = sub.get("userId", "")
+                name = uid_to_name.get(uid, "")
+                if name:
+                    name_to_sub_id[name] = sub["id"]
+        except Exception:
+            pass
+
+    pushed, skipped, errors = 0, 0, []
+    for r in rows:
+        sub_id = r["submission_id"] or name_to_sub_id.get(r["student_name"], "")
+        if not sub_id:
+            skipped += 1
+            continue
+        try:
+            classroom.patch_submission_grade(body.course_id, body.assignment_id, sub_id, float(r["grade"]))
+            pushed += 1
+        except Exception as e:
+            errors.append({"student": r["student_name"], "error": str(e)})
+
+    return {"pushed": pushed, "skipped": skipped, "errors": errors}
 
 
 @router.post("/grade")
