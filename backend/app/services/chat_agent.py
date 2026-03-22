@@ -90,6 +90,21 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "get_assignment_detail",
+            "description": "Get the full details of a specific assignment including its description, instructions, and any attached files (rubrics, worksheets, etc.). Use this when the teacher asks about the content of a specific assignment or its attachments.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "class_id": {"type": "string", "description": "The class/course ID"},
+                    "assignment_title": {"type": "string", "description": "The title or partial title of the assignment to look up"},
+                },
+                "required": ["class_id", "assignment_title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_class_roster",
             "description": "Get the full student roster for a class.",
             "parameters": {
@@ -390,9 +405,9 @@ TOOL_DEFINITIONS = [
 # Tools that are always available regardless of skills settings
 _CORE_TOOLS = {
     "list_corpus_documents", "read_corpus_document", "search_corpus",
-    "get_student_data", "get_class_assignments", "get_class_roster",
-    "search_memories", "log_strategy", "navigate", "set_language",
-    "get_documentation",
+    "get_student_data", "get_class_assignments", "get_assignment_detail",
+    "get_class_roster", "search_memories", "log_strategy", "navigate",
+    "set_language", "get_documentation",
 }
 
 # Maps skill key → set of tool names it unlocks
@@ -625,6 +640,64 @@ class ChatAgentService:
                         "creationTime": a.get("creationTime"),
                     })
                 return json.dumps(simplified, default=str)
+
+            elif tool_name == "get_assignment_detail":
+                class_id = arguments["class_id"]
+                title_query = arguments["assignment_title"].lower()
+                classroom = ClassroomService(self.access_token)
+                assignments = classroom.list_assignments(class_id)
+
+                # Find best title match
+                match = None
+                for a in assignments:
+                    if title_query in a.get("title", "").lower():
+                        match = a
+                        break
+
+                if not match:
+                    return json.dumps({"error": f"No assignment found matching '{arguments['assignment_title']}'"})
+
+                # Fetch full detail (includes materials)
+                full = classroom.get_assignment(class_id, match["id"])
+                result = {
+                    "id": full.get("id"),
+                    "title": full.get("title"),
+                    "description": full.get("description", ""),
+                    "state": full.get("state"),
+                    "maxPoints": full.get("maxPoints"),
+                    "dueDate": full.get("dueDate"),
+                    "materials": [],
+                }
+
+                # Process attached materials
+                from app.services.drive import DriveService
+                drive = DriveService(self.access_token)
+                for mat in full.get("materials", []):
+                    if "driveFile" in mat:
+                        df = mat["driveFile"]["driveFile"]
+                        mime = df.get("mimeType", "")
+                        entry = {
+                            "title": df.get("title"),
+                            "link": df.get("alternateLink"),
+                            "type": mime,
+                        }
+                        # Read content for Google Docs and plain text files
+                        if mime in (
+                            "application/vnd.google-apps.document",
+                            "application/vnd.google-apps.spreadsheet",
+                            "text/plain",
+                        ):
+                            try:
+                                entry["content"] = drive.export_as_text(df["id"], mime)[:3000]
+                            except Exception:
+                                entry["content"] = "(could not read content)"
+                        result["materials"].append(entry)
+                    elif "link" in mat:
+                        result["materials"].append({"title": mat["link"].get("title"), "url": mat["link"].get("url"), "type": "link"})
+                    elif "form" in mat:
+                        result["materials"].append({"title": mat["form"].get("title"), "type": "form"})
+
+                return json.dumps(result, default=str)
 
             elif tool_name == "get_class_roster":
                 class_id = arguments["class_id"]
