@@ -15,7 +15,6 @@ SCOPES = [
     "https://www.googleapis.com/auth/classroom.announcements",  # Create/read announcements
     "https://www.googleapis.com/auth/classroom.student-submissions.me.readonly",
     "https://www.googleapis.com/auth/classroom.student-submissions.students.readonly",
-    "https://www.googleapis.com/auth/classroom.grades",  # Push draft/assigned grades
     "https://www.googleapis.com/auth/classroom.rosters.readonly",
     "https://www.googleapis.com/auth/classroom.profile.emails",  # Student email addresses
     # Drive

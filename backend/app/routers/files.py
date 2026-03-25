@@ -196,6 +196,66 @@ async def get_document_content(doc_id: str, request: Request, class_id: str):
     return {"doc_id": doc_id, "title": info.get("title", doc_id), "content": content}
 
 
+@router.get("/drive-files")
+async def list_drive_files(request: Request):
+    """List Google Docs and text files from Drive for import."""
+    from app.services.drive import DriveService
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    try:
+        files = DriveService(token).list_files()
+        return {"files": files}
+    except Exception as e:
+        raise HTTPException(400, f"Failed to list Drive files: {e}")
+
+
+@router.post("/import-from-drive")
+async def import_from_drive(
+    request: Request,
+    file_id: str = Form(...),
+    class_id: str = Form("general"),
+    folder_id: str = Form(None),
+    title: str = Form(None),
+):
+    """Import a Google Doc or file from Drive into the file library."""
+    from app.services.drive import DriveService
+    import io
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    user_id = _get_user_id(request)
+    class_dir = _get_class_dir(user_id, class_id)
+    service = DriveService(token)
+
+    file_info = service.get_file(file_id)
+    mime_type = file_info.get("mimeType", "")
+    file_name = file_info.get("name", "untitled")
+    doc_title = title or file_name
+
+    if mime_type == "application/vnd.google-apps.document":
+        text = service.export_as_text(file_id, mime_type)
+    elif mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        content = service.download_file(file_id)
+        from docx import Document as DocxDocument
+        doc = DocxDocument(io.BytesIO(content))
+        text = "\n".join(p.text for p in doc.paragraphs)
+    elif mime_type == "application/pdf":
+        content = service.download_file(file_id)
+        from pypdf import PdfReader
+        pdf = PdfReader(io.BytesIO(content))
+        text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+    elif mime_type == "text/plain":
+        text = service.download_file(file_id).decode("utf-8", errors="replace")
+    else:
+        raise HTTPException(400, f"Unsupported file type: {mime_type}")
+
+    doc_id = hashlib.md5(f"{user_id}:{file_id}".encode()).hexdigest()[:16]
+    (class_dir / f"{doc_id}.txt").write_text(text, encoding="utf-8")
+    index = _get_index(user_id, class_id)
+    index["documents"][doc_id] = {"title": doc_title, "filename": file_name, "source": "drive", "folder_id": folder_id}
+    _save_index(user_id, class_id, index)
+    return {"id": doc_id, "title": doc_title, "filename": file_name}
+
+
 @router.patch("/documents/{doc_id}/rename")
 async def rename_document(doc_id: str, request: Request):
     user_id = _get_user_id(request)

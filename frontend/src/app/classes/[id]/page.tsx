@@ -443,6 +443,20 @@ export default function ClassPage() {
     }
   }
 
+  const handleCopyGrades = () => {
+    const header = 'Student\tGrade\tMax Points\tAI Score\tFeedback'
+    const rows = graderResults.map(r => [
+      r.student_name,
+      r.grade != null && !r.no_submission && !r.no_text ? r.grade : '',
+      r.max_points ?? '',
+      r.no_submission || r.no_text ? '' : (r.ai_score ?? ''),
+      r.feedback || '',
+    ].join('\t'))
+    navigator.clipboard.writeText([header, ...rows].join('\n'))
+      .then(() => setPushGradeResult('Copied to clipboard'))
+      .catch(() => setPushGradeResult('Error: clipboard access denied'))
+  }
+
   const aiScoreColor = (score: number) => {
     if (score <= 3) return '#34a853'
     if (score <= 6) return '#f9ab00'
@@ -706,10 +720,21 @@ export default function ClassPage() {
                                   ? `${r.grade} / ${r.max_points}`
                                   : '—'}
                               </td>
-                              <td style={{ ...styles.graderTd, maxWidth: '250px' }}>
-                                <span title={r.feedback} style={{ cursor: r.feedback ? 'help' : 'default' }}>
-                                  {r.feedback ? (r.feedback.length > 80 ? r.feedback.slice(0, 80) + '…' : r.feedback) : '—'}
-                                </span>
+                              <td style={{ ...styles.graderTd, maxWidth: '280px' }}>
+                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                                  <span title={r.feedback} style={{ cursor: r.feedback ? 'help' : 'default', flex: 1 }}>
+                                    {r.feedback ? (r.feedback.length > 80 ? r.feedback.slice(0, 80) + '…' : r.feedback) : '—'}
+                                  </span>
+                                  {r.feedback && (
+                                    <button
+                                      onClick={() => navigator.clipboard.writeText(r.feedback)}
+                                      title="Copy feedback"
+                                      style={styles.copyFeedbackBtn}
+                                    >
+                                      Copy
+                                    </button>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -721,6 +746,9 @@ export default function ClassPage() {
                       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
                         <button onClick={handleExportCsv} style={styles.exportCsvBtn}>
                           Export CSV
+                        </button>
+                        <button onClick={handleCopyGrades} style={styles.exportCsvBtn}>
+                          Copy Grades
                         </button>
                         <button onClick={handlePushGrades} disabled={pushingGrades} style={styles.pushGradesBtn}>
                           {pushingGrades ? 'Pushing...' : 'Push Draft Grades to Classroom'}
@@ -1021,4 +1049,5 @@ const styles: { [key: string]: React.CSSProperties } = {
   plagiarismBox: { padding: '10px 14px', background: '#fff3cd', border: '1px solid #ffc107', borderRadius: '6px', color: '#856404', fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '4px' },
   exportCsvBtn: { padding: '6px 14px', background: '#fff', border: '1px solid #ccc', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 },
   pushGradesBtn: { padding: '6px 14px', background: '#1a73e8', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 },
+  copyFeedbackBtn: { padding: '2px 7px', background: '#f1f3f4', border: '1px solid #dadce0', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', whiteSpace: 'nowrap' as const, flexShrink: 0 },
 }

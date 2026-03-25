@@ -59,6 +59,10 @@ export default function FilesPage() {
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [driveFiles, setDriveFiles] = useState<{id: string, name: string, mimeType: string}[]>([])
+  const [showDriveModal, setShowDriveModal] = useState(false)
+  const [loadingDrive, setLoadingDrive] = useState(false)
+  const [importingId, setImportingId] = useState<string | null>(null)
 
   useEffect(() => {
     const t = localStorage.getItem('token')
@@ -206,6 +210,42 @@ export default function FilesPage() {
     if (preview?.doc.id === docId) setPreview(null)
   }
 
+  const openDriveModal = async () => {
+    setShowDriveModal(true)
+    setLoadingDrive(true)
+    try {
+      const res = await fetch(`${API_URL}/files/drive-files`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) { const d = await res.json(); setDriveFiles(d.files || []) }
+    } finally {
+      setLoadingDrive(false)
+    }
+  }
+
+  const importFromDrive = async (fileId: string, fileName: string) => {
+    if (!token) return
+    setImportingId(fileId)
+    const fd = new FormData()
+    fd.append('file_id', fileId)
+    fd.append('class_id', selected.class_id)
+    if (selected.folder_id) fd.append('folder_id', selected.folder_id)
+    fd.append('title', fileName)
+    try {
+      const res = await fetch(`${API_URL}/files/import-from-drive`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      })
+      if (res.ok) {
+        await loadDocs(selected.class_id)
+        setShowDriveModal(false)
+      }
+    } finally {
+      setImportingId(null)
+    }
+  }
+
   const classFolders = (class_id: string) => folders.filter(f => f.class_id === class_id)
 
   const visibleDocs = selected.folder_id
@@ -332,9 +372,13 @@ export default function FilesPage() {
               </>
             )}
           </div>
-          <div>
+          <div style={{ display: 'flex', gap: '8px' }}>
             <input ref={fileInputRef} type="file" style={{ display: 'none' }}
               onChange={handleUpload} accept=".pdf,.txt,.docx,.md" />
+            <button style={{ ...s.uploadBtn, background: '#fff', color: '#1a73e8', border: '1px solid #1a73e8' }}
+              onClick={openDriveModal}>
+              Import from Drive
+            </button>
             <button style={{ ...s.uploadBtn, opacity: uploading ? 0.6 : 1 }}
               onClick={() => fileInputRef.current?.click()} disabled={uploading}>
               {uploading ? tCommon('uploading') : t('uploadFile')}
@@ -423,8 +467,41 @@ export default function FilesPage() {
           )}
         </div>
       </div>
+      <DriveModal />
     </div>
   )
+
+  function DriveModal() {
+    if (!showDriveModal) return null
+    return (
+      <div style={s.modalOverlay} onClick={() => setShowDriveModal(false)}>
+        <div style={s.modal} onClick={e => e.stopPropagation()}>
+          <div style={s.modalHeader}>
+            <span style={{ fontWeight: 600, fontSize: '1rem' }}>Import from Google Drive</span>
+            <button style={s.modalClose} onClick={() => setShowDriveModal(false)}>×</button>
+          </div>
+          <div style={s.modalBody}>
+            {loadingDrive ? (
+              <div style={{ color: '#aaa', padding: '20px 0', textAlign: 'center' }}>Loading...</div>
+            ) : driveFiles.length === 0 ? (
+              <div style={{ color: '#aaa', padding: '20px 0', textAlign: 'center' }}>No supported files found in Drive.</div>
+            ) : driveFiles.map(f => (
+              <div key={f.id} style={s.driveRow}>
+                <span style={s.driveFileName}>{f.name}</span>
+                <button
+                  style={{ ...s.uploadBtn, fontSize: '0.8rem', padding: '5px 12px', opacity: importingId === f.id ? 0.6 : 1 }}
+                  disabled={importingId === f.id}
+                  onClick={() => importFromDrive(f.id, f.name)}
+                >
+                  {importingId === f.id ? 'Importing...' : 'Import'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   function NewFolderRow({ classId }: { classId: string }) {
     if (newFolderFor === classId) {
@@ -614,5 +691,31 @@ const s: { [k: string]: React.CSSProperties } = {
   previewText: {
     fontSize: '0.84rem', color: '#444', lineHeight: 1.65,
     whiteSpace: 'pre-wrap' as const, fontFamily: 'inherit', margin: 0,
+  },
+  modalOverlay: {
+    position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.4)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+  },
+  modal: {
+    background: '#fff', borderRadius: '12px', width: '480px', maxWidth: '95vw',
+    maxHeight: '70vh', display: 'flex', flexDirection: 'column' as const,
+    boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+  },
+  modalHeader: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    padding: '16px 20px', borderBottom: '1px solid #eee',
+  },
+  modalClose: {
+    background: 'none', border: 'none', fontSize: '1.4rem',
+    cursor: 'pointer', color: '#aaa', lineHeight: 1,
+  },
+  modalBody: { overflowY: 'auto' as const, padding: '8px 0' },
+  driveRow: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    padding: '10px 20px', borderBottom: '1px solid #f5f5f5', gap: '12px',
+  },
+  driveFileName: {
+    fontSize: '0.9rem', color: '#333', flex: 1,
+    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const,
   },
 }
