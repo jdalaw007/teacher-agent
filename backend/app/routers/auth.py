@@ -66,6 +66,7 @@ async def callback(code: str = None, error: str = None):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+
 @router.get("/user")
 async def get_current_user(request: Request):
     """Get current user info from token."""

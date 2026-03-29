@@ -31,6 +31,15 @@ interface EmailMessage {
   unread: boolean
 }
 
+interface CalendarEvent {
+  id: string
+  title: string
+  start: string
+  end: string
+  all_day: boolean
+  location: string
+}
+
 interface Submission {
   student_name: string
   assignment_title: string
@@ -102,6 +111,8 @@ export default function Dashboard() {
   const [emailsError, setEmailsError] = useState(false)
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [courses, setCourses] = useState<Course[]>([])
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[] | null>(null)
+  const [calendarError, setCalendarError] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [feedbackText, setFeedbackText] = useState('')
   const [feedbackSent, setFeedbackSent] = useState(false)
@@ -158,6 +169,11 @@ export default function Dashboard() {
       .then(r => { if (!r.ok) throw new Error(); return r.json() })
       .then(d => setEmails(d.messages || []))
       .catch(() => { setEmails([]); setEmailsError(true) })
+
+    fetch(`${API_URL}/calendar/events?max_results=20&days_ahead=7`, { headers: { Authorization: `Bearer ${t}` } })
+      .then(r => { if (!r.ok) throw new Error(); return r.json() })
+      .then(d => setCalendarEvents(d.events || []))
+      .catch(() => { setCalendarEvents([]); setCalendarError(true) })
 
     fetch(`${API_URL}/scheduled-posts/check-due`, {
       method: 'POST', headers: { Authorization: `Bearer ${t}` },
@@ -470,7 +486,38 @@ export default function Dashboard() {
               </svg>
               <span style={styles.cardLabel}>{t('calendar')}</span>
             </div>
-            <p style={styles.cardHint}>{t('calendarComingSoon')}</p>
+            {calendarError ? (
+              <p style={styles.cardHint}>{t('calendarError')}</p>
+            ) : calendarEvents === null ? (
+              <p style={styles.cardHint}>...</p>
+            ) : calendarEvents.length === 0 ? (
+              <p style={styles.cardHint}>{t('calendarNoEvents')}</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {calendarEvents.map(ev => {
+                  const start = new Date(ev.start)
+                  const isToday = new Date().toDateString() === start.toDateString()
+                  const dayLabel = isToday
+                    ? start.toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase() + ' (today)'
+                    : start.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+                  const timeLabel = ev.all_day
+                    ? t('calendarAllDay')
+                    : start.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+                  return (
+                    <div key={ev.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <div style={{ minWidth: '44px', textAlign: 'right' }}>
+                        <div style={{ fontSize: '10px', color: '#888', fontWeight: 500, lineHeight: 1.3 }}>{dayLabel.split(' ')[0]}</div>
+                        <div style={{ fontSize: '10px', color: isToday ? '#1a73e8' : '#aaa' }}>{timeLabel}</div>
+                      </div>
+                      <div style={{ flex: 1, borderLeft: `2px solid ${isToday ? '#1a73e8' : '#e0e0e0'}`, paddingLeft: '8px' }}>
+                        <div style={{ fontSize: '13px', fontWeight: isToday ? 600 : 400, color: isToday ? '#1a73e8' : '#333', lineHeight: 1.3 }}>{ev.title}</div>
+                        {ev.location && <div style={{ fontSize: '11px', color: '#888', marginTop: '1px' }}>{ev.location}</div>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           {/* Suggestion Box */}

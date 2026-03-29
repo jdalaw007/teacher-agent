@@ -24,8 +24,8 @@ SCOPES = [
     # Gmail (readonly = see inbox; compose = send + drafts)
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.compose",
-    # Calendar
-    "https://www.googleapis.com/auth/calendar.readonly",
+    # Calendar (events only — no access to calendar list/settings)
+    "https://www.googleapis.com/auth/calendar.events.readonly",
 ]
 
 
