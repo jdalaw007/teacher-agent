@@ -373,6 +373,8 @@
     "testingKey": "Testování...",
     "keyValid": "Klíč je platný",
     "keyStored": "Váš klíč je bezpečně uložen ve Vašem profilu a nikdy není sdílen. Pokud chcete, můžete tento krok přeskočit.",
+    "codenameNoticeTitle": "Poznámka k ochraně soukromí žáků",
+    "codenameNoticeBody": "Každému žákovi je automaticky přiřazeno krycí jméno — název zvířete (např. Dvořák \u2192 Delfín). Při komunikaci s AI agentem \u2014 zejména hlasem \u2014 vždy používejte krycí jména místo skutečných jmen. Tím zajistíte, že identita žáků neopustí systém. Přehled krycích jmen najdete kliknutím na ikonu \uD83D\uDD75\uFE0F na stránce třídy.",
     "back": "Zpět",
     "next": "Další",
     "finishing": "Ukládání...",

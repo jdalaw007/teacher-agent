@@ -373,6 +373,8 @@
     "testingKey": "Probando...",
     "keyValid": "La clave es válida",
     "keyStored": "Su clave se almacena de forma segura en su perfil y nunca se comparte.",
+    "codenameNoticeTitle": "Una nota sobre la privacidad del estudiante",
+    "codenameNoticeBody": "A cada estudiante se le asigna automáticamente un nombre en clave \u2014 un animal (ej. Smith \u2192 Cisne). Al chatear con el agente de IA \u2014 especialmente por voz \u2014 use siempre los nombres en clave en lugar de los nombres reales. Esto mantiene las identidades de los estudiantes fuera del modelo de IA. Puede encontrar la hoja de referencia de nombres en clave haciendo clic en el icono \uD83D\uDD75\uFE0F en cualquier página de clase.",
     "back": "Atrás",
     "next": "Siguiente",
     "finishing": "Guardando...",

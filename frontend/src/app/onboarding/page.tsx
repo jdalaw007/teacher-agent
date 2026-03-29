@@ -331,6 +331,11 @@ export default function OnboardingPage() {
             <p style={{ fontSize: '0.8rem', color: '#888', lineHeight: '1.5' }}>
               {t('keyStored')}
             </p>
+
+            <div style={s.codenameNotice}>
+              <div style={s.codenameNoticeTitle}>🕵️ {t('codenameNoticeTitle')}</div>
+              <p style={s.codenameNoticeBody}>{t('codenameNoticeBody')}</p>
+            </div>
           </div>
         )}
 
@@ -592,5 +597,24 @@ const s: { [k: string]: React.CSSProperties } = {
     cursor: 'pointer',
     fontSize: '0.92rem',
     fontWeight: '600',
+  },
+  codenameNotice: {
+    marginTop: '20px',
+    padding: '14px 16px',
+    backgroundColor: '#f0f7ff',
+    border: '1px solid #c5ddf9',
+    borderRadius: '8px',
+  },
+  codenameNoticeTitle: {
+    fontWeight: 600,
+    fontSize: '0.92rem',
+    color: '#1a73e8',
+    marginBottom: '6px',
+  },
+  codenameNoticeBody: {
+    fontSize: '0.85rem',
+    color: '#444',
+    lineHeight: '1.55',
+    margin: 0,
   },
 }

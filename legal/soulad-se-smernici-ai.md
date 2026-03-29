@@ -1,7 +1,7 @@
 # Soulad aplikace Teacher Agent se Směrnicí o využívání nástrojů AI na ZŠ Trojská
 
 **Dokument připraven:** 2026-03-29
-**Verze aplikace:** commit a63763d (nasazeno na Vercel)
+**Verze aplikace:** commit bb7b82e (nasazeno na Vercel)
 **Účel:** Přehled toho, kde Směrnice o využívání AI na ZŠ Trojská klade požadavky a jak je aplikace Teacher Agent splňuje.
 
 Každý bod je označen:

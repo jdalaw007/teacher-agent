@@ -373,6 +373,8 @@
     "testingKey": "Testing...",
     "keyValid": "Key is valid",
     "keyStored": "Your key is stored securely in your personal profile and never shared. You can skip this for now if you'd like — the app may use a default key if one is configured.",
+    "codenameNoticeTitle": "A note on student privacy",
+    "codenameNoticeBody": "Every student is automatically assigned an animal codename (e.g. Smith \u2192 Swan). When chatting with the AI agent \u2014 especially by voice \u2014 always use codenames instead of real names. This keeps student identities out of the AI model. You can find the codename cheat sheet by clicking the \uD83D\uDD75\uFE0F icon on any class page.",
     "back": "Back",
     "next": "Next",
     "finishing": "Saving...",

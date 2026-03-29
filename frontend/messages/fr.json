@@ -373,6 +373,8 @@
     "testingKey": "Test en cours...",
     "keyValid": "La clé est valide",
     "keyStored": "Votre clé est stockée en toute sécurité dans votre profil et n'est jamais partagée.",
+    "codenameNoticeTitle": "Note sur la confidentialité des élèves",
+    "codenameNoticeBody": "Chaque élève reçoit automatiquement un nom de code \u2014 un animal (ex. Dupont \u2192 Dauphin). Lorsque vous discutez avec l'agent IA \u2014 surtout par voix \u2014 utilisez toujours les noms de code plutôt que les vrais noms. Cela permet de garder l'identité des élèves hors du modèle IA. Vous trouverez la fiche des noms de code en cliquant sur l'icône \uD83D\uDD75\uFE0F sur n'importe quelle page de classe.",
     "back": "Retour",
     "next": "Suivant",
     "finishing": "Enregistrement...",
