@@ -240,6 +240,7 @@ def init_db():
         "ALTER TABLE user_profiles ADD COLUMN skills_enabled TEXT DEFAULT '{}'",
         "ALTER TABLE grader_results ADD COLUMN student_user_id TEXT",
         "ALTER TABLE grader_results ADD COLUMN submission_id TEXT",
+        "ALTER TABLE students ADD COLUMN codename TEXT DEFAULT ''",
     ]:
         try:
             conn.execute(migration)

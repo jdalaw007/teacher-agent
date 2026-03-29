@@ -738,7 +738,7 @@ class ChatAgentService:
                 result = classroom.create_assignment(
                     course_id=class_id,
                     title=title,
-                    description=description,
+                    description=f"[AI Generated]\n\n{description}",
                     max_points=max_points,
                 )
                 return json.dumps({
@@ -752,7 +752,7 @@ class ChatAgentService:
                 class_id = arguments["class_id"]
                 text = arguments["text"]
                 classroom = ClassroomService(self.access_token)
-                result = classroom.create_announcement(class_id, text)
+                result = classroom.create_announcement(class_id, f"[AI Generated]\n\n{text}")
                 return json.dumps({
                     "success": True,
                     "announcement_id": result.get("id"),

@@ -64,6 +64,42 @@ class SyncSubmissionsRequest(BaseModel):
     class_id: str
 
 
+@router.get("/codenames")
+async def list_codenames(class_id: str, request: Request):
+    """Return codename -> real name mapping for a class (cheat sheet)."""
+    user_id = get_user_id_from_request(request)
+    service = StudentService(user_id)
+    students = service.list_students(class_id)
+    return {
+        "codenames": [
+            {"id": s["id"], "codename": s.get("codename") or "", "name": s["name"]}
+            for s in students
+            if s.get("codename")
+        ]
+    }
+
+
+@router.patch("/{student_id}/codename")
+async def update_codename(student_id: int, request: Request):
+    """Update a student's codename."""
+    user_id = get_user_id_from_request(request)
+    body = await request.json()
+    codename = body.get("codename", "").strip()
+    if not codename:
+        raise HTTPException(400, "codename required")
+    from app.services.database import get_db
+    db = get_db()
+    try:
+        db.execute(
+            "UPDATE students SET codename = ? WHERE id = ? AND teacher_user_id = ?",
+            (codename, student_id, user_id)
+        )
+        db.commit()
+    finally:
+        db.close()
+    return {"id": student_id, "codename": codename}
+
+
 @router.get("/list")
 async def list_students(class_id: str, request: Request):
     """List all students for a class, enriched with summary stats and group info."""

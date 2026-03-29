@@ -180,12 +180,12 @@ class ScheduledPostService:
             classroom = ClassroomService(access_token)
             try:
                 if post["post_type"] == "announcement":
-                    result = classroom.create_announcement(post["class_id"], post["content"])
+                    result = classroom.create_announcement(post["class_id"], f"[AI Generated]\n\n{post['content']}")
                 else:
                     result = classroom.create_assignment(
                         course_id=post["class_id"],
                         title=post["title"],
-                        description=post["content"],
+                        description=f"[AI Generated]\n\n{post['content']}",
                         max_points=post.get("max_points"),
                     )
             except Exception as e:

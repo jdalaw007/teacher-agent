@@ -69,6 +69,10 @@ export default function ClassPage() {
   const [showAddGroup, setShowAddGroup] = useState(false)
   const [syncingGrades, setSyncingGrades] = useState(false)
   const [studentsCollapsed, setStudentsCollapsed] = useState(false)
+  const [showCodenames, setShowCodenames] = useState(false)
+  const [codenames, setCodenames] = useState<{id: number, codename: string, name: string}[]>([])
+  const [editingCodename, setEditingCodename] = useState<number | null>(null)
+  const [editCodenameValue, setEditCodenameValue] = useState('')
   const [showMailModal, setShowMailModal] = useState(false)
   const [mailSubject, setMailSubject] = useState('')
   const [mailBody, setMailBody] = useState('')
@@ -80,6 +84,7 @@ export default function ClassPage() {
   // Grader state
   const [graderAssignment, setGraderAssignment] = useState<Assignment | null>(null)
   const [graderRubric, setGraderRubric] = useState('')
+  const [graderTone, setGraderTone] = useState('')
   const [graderMaxPoints, setGraderMaxPoints] = useState(100)
   const [graderRunning, setGraderRunning] = useState(false)
   const [graderStatus, setGraderStatus] = useState('')
@@ -139,6 +144,34 @@ export default function ClassPage() {
       }
     } catch {
       // silent
+    }
+  }
+
+  const fetchCodenames = async () => {
+    const token = localStorage.getItem('token')
+    if (!token) return
+    try {
+      const res = await fetch(`${API_URL}/students/codenames?class_id=${courseId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) { const data = await res.json(); setCodenames(data.codenames || []) }
+    } catch { /* silent */ }
+  }
+
+  const saveCodename = async (studentId: number, newCodename: string) => {
+    const token = localStorage.getItem('token')
+    if (!token || !newCodename.trim()) { setEditingCodename(null); return }
+    try {
+      const res = await fetch(`${API_URL}/students/${studentId}/codename`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codename: newCodename.trim() }),
+      })
+      if (res.ok) {
+        setCodenames(prev => prev.map(c => c.id === studentId ? { ...c, codename: newCodename.trim() } : c))
+      }
+    } finally {
+      setEditingCodename(null)
     }
   }
 
@@ -371,6 +404,7 @@ export default function ClassPage() {
           rubric: graderRubric,
           max_points: graderMaxPoints,
           student_user_id: graderStudentFilter?.userId || '',
+          tone_instructions: graderTone,
         }),
       })
       if (!res.ok || !res.body) {
@@ -549,6 +583,55 @@ export default function ClassPage() {
           >
             {studentsCollapsed ? t('show') : t('hide')}
           </button>
+          <div style={{ position: 'relative' }}>
+            <button
+              title="Codename cheat sheet — use these names with the AI instead of real student names"
+              onClick={() => { if (!showCodenames) fetchCodenames(); setShowCodenames(!showCodenames) }}
+              style={{ background: 'none', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', padding: '2px 8px', color: '#666' }}
+            >
+              🕵️
+            </button>
+            {showCodenames && (
+              <div style={styles.codenamePopover}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <strong style={{ fontSize: '0.85rem' }}>Codename Cheat Sheet</strong>
+                  <button onClick={() => setShowCodenames(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', fontSize: '1rem', lineHeight: 1 }}>×</button>
+                </div>
+                <p style={{ fontSize: '0.75rem', color: '#888', margin: '0 0 8px 0' }}>
+                  Use these names when speaking to the AI — never use real student names with voice input.
+                </p>
+                {codenames.length === 0
+                  ? <p style={{ fontSize: '0.8rem', color: '#aaa' }}>No codenames yet — import roster first.</p>
+                  : codenames.map(c => (
+                    <div key={c.id} style={styles.codenameRow}>
+                      {editingCodename === c.id ? (
+                        <input
+                          autoFocus
+                          style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: '4px', padding: '1px 5px', width: '120px' }}
+                          value={editCodenameValue}
+                          onChange={e => setEditCodenameValue(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') saveCodename(c.id, editCodenameValue)
+                            if (e.key === 'Escape') setEditingCodename(null)
+                          }}
+                          onBlur={() => saveCodename(c.id, editCodenameValue)}
+                        />
+                      ) : (
+                        <span
+                          style={{ ...styles.codename, cursor: 'pointer', textDecoration: 'underline dotted' }}
+                          title="Click to edit"
+                          onClick={() => { setEditingCodename(c.id); setEditCodenameValue(c.codename) }}
+                        >
+                          {c.codename}
+                        </span>
+                      )}
+                      <span style={styles.codenameReal}>{c.name}</span>
+                    </div>
+                  ))
+                }
+              </div>
+            )}
+          </div>
         </h2>
 
         {studentMessage && (
@@ -613,7 +696,6 @@ export default function ClassPage() {
           onGrade={(assignment) => {
             setGraderAssignment(assignment)
             setGraderStudentFilter(null)
-            setGraderRubric('')
             setGraderMaxPoints(assignment.maxPoints || 100)
             setGraderResults([])
             setGraderPlagiarism([])
@@ -623,7 +705,6 @@ export default function ClassPage() {
           onGradeStudent={(assignment, userId, userName) => {
             setGraderAssignment(assignment)
             setGraderStudentFilter({ userId, name: userName })
-            setGraderRubric('')
             setGraderMaxPoints(assignment.maxPoints || 100)
             setGraderResults([])
             setGraderPlagiarism([])
@@ -653,6 +734,16 @@ export default function ClassPage() {
                         rows={5}
                         style={styles.mailTextarea}
                         placeholder={t('rubricPlaceholder')}
+                      />
+                    </div>
+                    <div style={styles.mailSection}>
+                      <label style={styles.mailLabel}>{t('toneLabel')} <span style={{ fontWeight: 400, color: '#888', fontSize: '0.8rem' }}>{t('toneNote')}</span></label>
+                      <textarea
+                        value={graderTone}
+                        onChange={e => setGraderTone(e.target.value)}
+                        rows={3}
+                        style={styles.mailTextarea}
+                        placeholder={t('tonePlaceholder')}
                       />
                     </div>
                     <div style={styles.mailSection}>
@@ -751,7 +842,7 @@ export default function ClassPage() {
                           Copy Grades
                         </button>
                         <button onClick={handlePushGrades} disabled={pushingGrades} style={styles.pushGradesBtn}>
-                          {pushingGrades ? 'Pushing...' : 'Push Draft Grades to Classroom'}
+                          {pushingGrades ? 'Saving...' : 'Save AI Suggestions to Classroom'}
                         </button>
                         {pushGradeResult && (
                           <span style={{ fontSize: '0.8rem', color: pushGradeResult.startsWith('Error') ? '#ea4335' : '#34a853' }}>
@@ -1050,4 +1141,13 @@ const styles: { [key: string]: React.CSSProperties } = {
   exportCsvBtn: { padding: '6px 14px', background: '#fff', border: '1px solid #ccc', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 },
   pushGradesBtn: { padding: '6px 14px', background: '#1a73e8', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 },
   copyFeedbackBtn: { padding: '2px 7px', background: '#f1f3f4', border: '1px solid #dadce0', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', whiteSpace: 'nowrap' as const, flexShrink: 0 },
+  codenamePopover: {
+    position: 'absolute' as const, top: '110%', left: 0, zIndex: 100,
+    background: '#fff', border: '1px solid #e0e0e0', borderRadius: '10px',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.12)', padding: '14px 16px',
+    minWidth: '260px', maxHeight: '340px', overflowY: 'auto' as const,
+  },
+  codenameRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #f5f5f5' },
+  codename: { fontWeight: 600, fontSize: '0.85rem', color: '#1a73e8' },
+  codenameReal: { fontSize: '0.82rem', color: '#555' },
 }

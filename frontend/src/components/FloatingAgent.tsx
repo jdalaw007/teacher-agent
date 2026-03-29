@@ -139,20 +139,30 @@ export default function FloatingAgent() {
     if (!SpeechRecognition) return
     const recognition = new SpeechRecognition()
     recognition.lang = langCode
-    recognition.continuous = false
+    recognition.continuous = true
     recognition.interimResults = true
     recognitionRef.current = recognition
 
-    recognition.onstart = () => setListening(true)
+    let silenceTimer: ReturnType<typeof setTimeout> | null = null
+    const SILENCE_MS = 3000
+
+    const resetSilenceTimer = () => {
+      if (silenceTimer) clearTimeout(silenceTimer)
+      silenceTimer = setTimeout(() => { recognition.stop() }, SILENCE_MS)
+    }
+
+    recognition.onstart = () => { setListening(true); resetSilenceTimer() }
 
     recognition.onresult = (e: any) => {
       const transcript = Array.from(e.results as any[])
         .map((r: any) => r[0].transcript)
         .join('')
       setInput(transcript)
+      resetSilenceTimer()
     }
 
     recognition.onend = () => {
+      if (silenceTimer) clearTimeout(silenceTimer)
       setListening(false)
       recognitionRef.current = null
       // Auto-send if we captured something
@@ -168,6 +178,7 @@ export default function FloatingAgent() {
     }
 
     recognition.onerror = () => {
+      if (silenceTimer) clearTimeout(silenceTimer)
       setListening(false)
       recognitionRef.current = null
     }
@@ -366,7 +377,7 @@ export default function FloatingAgent() {
                   background: listening ? '#ea4335' : '#f1f3f4',
                   boxShadow: listening ? '0 0 0 4px rgba(234,67,53,0.2)' : 'none',
                 }}
-                title={listening ? t('stopListening') : t('speak')}
+                title={listening ? t('stopListening') : "Voice input — use student codenames, not real names"}
               >
                 <MicIcon active={listening} />
               </button>

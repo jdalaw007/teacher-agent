@@ -113,10 +113,10 @@ GRADE_PROMPT = """You are grading a student assignment. Do two things:
 Student submission:
 {text}
 
-{language_instruction}Respond with JSON only: {{"ai_score": int, "ai_reasoning": str, "grade": int, "feedback": str}}"""
+{tone_section}{language_instruction}Respond with JSON only: {{"ai_score": int, "ai_reasoning": str, "grade": int, "feedback": str}}"""
 
 
-async def grade_assignment_stream(token: str, user_id: str, course_id: str, assignment_id: str, rubric: str, max_points: int, student_user_id: str | None = None):
+async def grade_assignment_stream(token: str, user_id: str, course_id: str, assignment_id: str, rubric: str, max_points: int, student_user_id: str | None = None, tone_instructions: str | None = None):
     """Async generator yielding SSE events for the grading pipeline."""
 
     def sse(data: dict) -> str:
@@ -230,10 +230,12 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                 continue
 
             try:
+                tone_section = f"Tone and style instructions: {tone_instructions}\n\n" if tone_instructions and tone_instructions.strip() else ""
                 prompt = GRADE_PROMPT.format(
                     max_points=max_points,
                     rubric=rubric,
                     text=text[:6000],
+                    tone_section=tone_section,
                     language_instruction=language_instruction,
                 )
                 response = client.chat.completions.create(

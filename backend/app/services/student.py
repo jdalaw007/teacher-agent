@@ -1,10 +1,29 @@
 from app.services.database import get_db
 from app.services.classroom import ClassroomService
+from app.services.codenames import assign_codename
 
 
 class StudentService:
     def __init__(self, teacher_user_id: str):
         self.teacher_user_id = teacher_user_id
+
+    def _get_language(self, db) -> str:
+        row = db.execute(
+            "SELECT language FROM user_profiles WHERE user_id = ?",
+            (self.teacher_user_id,)
+        ).fetchone()
+        return (row["language"] if row and row["language"] else "English")
+
+    def _existing_codenames(self, db, class_id: str) -> list[str]:
+        rows = db.execute(
+            "SELECT codename FROM students WHERE class_id = ? AND teacher_user_id = ? AND codename != ''",
+            (class_id, self.teacher_user_id)
+        ).fetchall()
+        return [r["codename"] for r in rows]
+
+    def _last_name(self, full_name: str) -> str:
+        parts = full_name.strip().split()
+        return parts[-1] if parts else full_name
 
     def import_roster(self, access_token: str, class_id: str) -> dict:
         """Import students from Google Classroom roster."""
@@ -15,6 +34,7 @@ class StudentService:
         imported = 0
         skipped = 0
         try:
+            language = self._get_language(db)
             for student in roster:
                 profile = student.get("profile", {})
                 name = profile.get("name", {})
@@ -22,20 +42,33 @@ class StudentService:
                 email = profile.get("emailAddress", "")
                 user_id = student.get("userId", "")
 
-                cursor = db.execute(
-                    """INSERT INTO students
-                       (classroom_user_id, name, email, class_id, teacher_user_id)
-                       VALUES (?, ?, ?, ?, ?)
-                       ON CONFLICT(classroom_user_id, class_id, teacher_user_id) DO UPDATE SET
-                       name = excluded.name,
-                       email = excluded.email,
-                       updated_at = datetime('now')""",
-                    (user_id, full_name, email, class_id, self.teacher_user_id),
-                )
-                if cursor.rowcount > 0:
-                    imported += 1
-                else:
+                # Check if already exists
+                existing = db.execute(
+                    "SELECT id, codename FROM students WHERE classroom_user_id = ? AND class_id = ? AND teacher_user_id = ?",
+                    (user_id, class_id, self.teacher_user_id)
+                ).fetchone()
+
+                if existing:
+                    db.execute(
+                        "UPDATE students SET name = ?, email = ?, updated_at = datetime('now') WHERE id = ?",
+                        (full_name, email, existing["id"])
+                    )
+                    # Backfill codename if missing
+                    if not existing["codename"]:
+                        existing_codenames = self._existing_codenames(db, class_id)
+                        codename = assign_codename(self._last_name(full_name), language, existing_codenames)
+                        db.execute("UPDATE students SET codename = ? WHERE id = ?", (codename, existing["id"]))
                     skipped += 1
+                else:
+                    existing_codenames = self._existing_codenames(db, class_id)
+                    codename = assign_codename(self._last_name(full_name), language, existing_codenames)
+                    db.execute(
+                        """INSERT INTO students
+                           (classroom_user_id, name, email, class_id, teacher_user_id, codename)
+                           VALUES (?, ?, ?, ?, ?, ?)""",
+                        (user_id, full_name, email, class_id, self.teacher_user_id, codename),
+                    )
+                    imported += 1
             db.commit()
         finally:
             db.close()
@@ -60,10 +93,13 @@ class StudentService:
         """Manually add a student."""
         db = get_db()
         try:
+            language = self._get_language(db)
+            existing_codenames = self._existing_codenames(db, class_id)
+            codename = assign_codename(self._last_name(name), language, existing_codenames)
             cursor = db.execute(
-                """INSERT INTO students (name, email, class_id, teacher_user_id)
-                   VALUES (?, ?, ?, ?)""",
-                (name, email, class_id, self.teacher_user_id),
+                """INSERT INTO students (name, email, class_id, teacher_user_id, codename)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (name, email, class_id, self.teacher_user_id, codename),
             )
             db.commit()
             student_id = cursor.lastrowid

@@ -189,20 +189,30 @@ export default function Dashboard() {
     if (!SpeechRecognition) return
     const recognition = new SpeechRecognition()
     recognition.lang = langCode
-    recognition.continuous = false
+    recognition.continuous = true
     recognition.interimResults = true
     recognitionRef.current = recognition
 
-    recognition.onstart = () => setListening(true)
+    let silenceTimer: ReturnType<typeof setTimeout> | null = null
+    const SILENCE_MS = 3000
+
+    const resetSilenceTimer = () => {
+      if (silenceTimer) clearTimeout(silenceTimer)
+      silenceTimer = setTimeout(() => { recognition.stop() }, SILENCE_MS)
+    }
+
+    recognition.onstart = () => { setListening(true); resetSilenceTimer() }
 
     recognition.onresult = (e: any) => {
       const transcript = Array.from(e.results as any[])
         .map((r: any) => r[0].transcript)
         .join('')
       setInputValue(transcript)
+      resetSilenceTimer()
     }
 
     recognition.onend = () => {
+      if (silenceTimer) clearTimeout(silenceTimer)
       setListening(false)
       recognitionRef.current = null
       setInputValue(prev => {
@@ -216,6 +226,7 @@ export default function Dashboard() {
     }
 
     recognition.onerror = () => {
+      if (silenceTimer) clearTimeout(silenceTimer)
       setListening(false)
       recognitionRef.current = null
     }
@@ -377,7 +388,7 @@ export default function Dashboard() {
               <button
                 onClick={() => listening ? stopListening() : startListening()}
                 disabled={isStreaming}
-                title={listening ? t('listeningStop') : t('listenSpeak')}
+                title={listening ? t('listeningStop') : "Voice input — use student codenames, not real names"}
                 style={{ ...styles.micBtn, background: listening ? '#ea4335' : '#f1f3f4', opacity: isStreaming ? 0.4 : 1 }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill={listening ? '#fff' : '#555'}>
