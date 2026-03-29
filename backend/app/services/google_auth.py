@@ -21,8 +21,8 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly",
     # Docs
     "https://www.googleapis.com/auth/documents.readonly",
-    # Gmail (modify includes read + trash + label)
-    "https://www.googleapis.com/auth/gmail.modify",
+    # Gmail (compose = create drafts + send only — no inbox read access)
+    "https://www.googleapis.com/auth/gmail.compose",
     # Calendar
     "https://www.googleapis.com/auth/calendar.readonly",
 ]
