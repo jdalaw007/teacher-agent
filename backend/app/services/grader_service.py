@@ -3,6 +3,7 @@ import difflib
 from openai import OpenAI
 from app.config import get_settings
 from app.services.classroom import ClassroomService
+from app.services.pseudonymize import scrub_submission_text
 from app.services.drive import DriveService
 from app.services.profile import ProfileService
 from app.services.database import get_db
@@ -231,10 +232,11 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
 
             try:
                 tone_section = f"Tone and style instructions: {tone_instructions}\n\n" if tone_instructions and tone_instructions.strip() else ""
+                clean_text = scrub_submission_text(text, known_names=list(student_names.values()))[:6000]
                 prompt = GRADE_PROMPT.format(
                     max_points=max_points,
                     rubric=rubric,
-                    text=text[:6000],
+                    text=clean_text,
                     tone_section=tone_section,
                     language_instruction=language_instruction,
                 )
