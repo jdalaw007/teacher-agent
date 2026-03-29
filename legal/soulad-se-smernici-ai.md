@@ -25,6 +25,10 @@ Každému žákovi je při importu třídního seznamu automaticky přiřazeno k
 - `backend/app/services/pseudonymize.py` — při každém volání AI nástroje jsou skutečná jména nahrazena krycími jmény dříve, než jsou data odeslána do OpenAI
 - Skutečná jména žáků **nikdy neopustí backend** v rámci AI volání
 
+**Sanitizace textu esejí před odesláním:**
+
+Před tím, než text žákovské práce opustí systém, je lokálně sanitizován. Sanitizace odstraňuje a nahrazuje zástupnými výrazy: jména žáků ze třídního seznamu, e-mailové adresy, telefonní čísla, URL adresy, klíčová slova označující citlivé kategorie (zdravotní stav, původ, národnost, náboženství, sportovní klub, zaměstnavatel rodinného příslušníka) a detekované pojmenované entity tam, kde to lokální zpracování textu umožňuje. Teprve sanitizovaný text je poté zkrácen na provozní limit a odeslán do OpenAI. Nativní text žáka zůstává uložen pouze lokálně na serveru.
+
 ### ✅ Právo na výmaz (GDPR čl. 17)
 
 Aplikace implementuje endpoint `DELETE /erase/students/{id}` pro výmaz všech dat konkrétního žáka a `DELETE /erase/account` pro úplné smazání účtu učitele.
