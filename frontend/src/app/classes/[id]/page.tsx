@@ -457,6 +457,10 @@ export default function ClassPage() {
 
   const handlePushGrades = async () => {
     if (!graderAssignment) return
+    const confirmed = window.confirm(
+      `Save AI-suggested grades for "${graderAssignment.title}" to Google Classroom as drafts?\n\nGrades will be visible only to you until you publish them in Classroom. This does not affect your official grading system.`
+    )
+    if (!confirmed) return
     const token = localStorage.getItem('token')
     setPushingGrades(true)
     setPushGradeResult(null)
