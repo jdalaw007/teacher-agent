@@ -1,20 +1,10 @@
 import json
 import difflib
-from openai import OpenAI
-from app.config import get_settings
 from app.services.classroom import ClassroomService
 from app.services.pseudonymize import scrub_submission_text
 from app.services.drive import DriveService
-from app.services.profile import ProfileService
+from app.services.profile import ProfileService, get_ai_client
 from app.services.database import get_db
-
-settings = get_settings()
-
-
-def _get_openai_client(user_id: str) -> OpenAI:
-    user_key = ProfileService(user_id).get_api_key()
-    api_key = user_key or settings.openai_api_key
-    return OpenAI(api_key=api_key)
 
 
 def _extract_text_from_submission(submission: dict, token: str) -> str:
@@ -124,7 +114,7 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
         return f"data: {json.dumps(data)}\n\n"
 
     try:
-        client = _get_openai_client(user_id)
+        client, ai_model = get_ai_client(user_id)
 
         from app.services.profile import ProfileService
         language = ProfileService(user_id).get_language()
@@ -154,7 +144,7 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                     max_points=max_points,
                 )
                 rubric_response = client.chat.completions.create(
-                    model="gpt-4o",
+                    model=ai_model,
                     messages=[{"role": "user", "content": rubric_prompt}],
                     max_tokens=300,
                 )
@@ -241,7 +231,7 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                     language_instruction=language_instruction,
                 )
                 response = client.chat.completions.create(
-                    model="gpt-4o",
+                    model=ai_model,
                     messages=[{"role": "user", "content": prompt}],
                     response_format={"type": "json_object"},
                     max_tokens=400,

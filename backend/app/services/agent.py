@@ -1,9 +1,5 @@
-from openai import OpenAI
-from app.config import get_settings
 from pathlib import Path
 import json
-
-settings = get_settings()
 
 # Match the corpus.py data directory
 DATA_DIR = Path(__file__).parent.parent.parent / "data" / "corpus"
@@ -15,14 +11,8 @@ class AgentService:
         self.class_id = class_id
         self.class_dir = DATA_DIR / user_id / class_id if class_id else None
 
-        # Prefer user's own API key; fall back to env key
-        from app.services.profile import ProfileService
-        user_key = ProfileService(user_id).get_api_key()
-        api_key = user_key or settings.openai_api_key
-        if api_key and api_key != "your-api-key-here":
-            self.client = OpenAI(api_key=api_key)
-        else:
-            self.client = None
+        from app.services.profile import get_ai_client
+        self.client, self.model = get_ai_client(user_id)
 
         # Resolve linked class directories
         from app.services.linked_classes import LinkedClassService
@@ -136,7 +126,7 @@ Format the assignment in a clear, ready-to-use format."""
 
         # Call OpenAI API
         response = self.client.chat.completions.create(
-            model="gpt-4o",
+            model=self.model,
             max_tokens=2000,
             messages=[
                 {"role": "user", "content": prompt}
@@ -178,7 +168,7 @@ Question: {question}
 Please provide a helpful answer based on the available materials. If the materials don't contain relevant information, say so and provide general guidance."""
 
         response = self.client.chat.completions.create(
-            model="gpt-4o",
+            model=self.model,
             max_tokens=1500,
             messages=[
                 {"role": "user", "content": prompt}
@@ -211,7 +201,7 @@ Please provide:
 4. Ideas for differentiation (easier/harder versions)"""
 
         response = self.client.chat.completions.create(
-            model="gpt-4o",
+            model=self.model,
             max_tokens=1500,
             messages=[
                 {"role": "user", "content": prompt}

@@ -435,14 +435,14 @@ class ChatAgentService:
         provider = ps.get_ai_provider()
 
         if provider == "gemini":
-            gemini_key = ps.get_gemini_api_key()
+            gemini_key = ps.get_gemini_api_key() or settings.gemini_api_key
             if gemini_key:
                 self.client = OpenAI(
                     api_key=gemini_key,
                     base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
                 )
-                self.model = "gemini-2.0-flash"
-                self.embedding_model = "text-embedding-004"
+                self.model = "models/gemini-2.5-flash"
+                self.embedding_model = "models/text-embedding-004"
         else:
             user_key = ps.get_api_key()
             api_key = user_key or settings.openai_api_key

@@ -233,12 +233,14 @@ The following must be completed before any formal school deployment:
 |---|---|---|
 | **P0** | Pseudonymize student data before all OpenAI calls | Ongoing unlawful cross-border transfer of children's PII |
 | **P0** | Design SEN/health data handling to exclude from AI processing | Art. 9 special category — no lawful basis for sending to OpenAI |
-| **P0** | Sign OpenAI DPA | No lawful basis for transfer without DPA |
+| ~~**P0**~~ | ~~Sign OpenAI DPA~~ | Done — signed 2026-04-11 by David Smith. Contract ID: a6ee370d-ae50-4de7-aaf0-9a4e510ec65d. Org ID: org-42BvMqCP4swBB3tQyflcyfzY. PDF at `C:\Users\jdlaw\Downloads\Data Processing Agreement (David Smith and OpenAI).pdf` |
 | ~~**P1**~~ | ~~Implement data retention enforcement (auto-delete)~~ | Done — nightly background task, periods configurable in `retention.py` |
 | ~~**P1**~~ | ~~Add audit logging for student data access~~ | Done — `audit_log` table, `GET /audit/log`, `GET /audit/log/student/{id}` |
 | ~~**P1**~~ | ~~Add right-to-erasure endpoint~~ | Done — `DELETE /erase/students/{id}` and `DELETE /erase/account` |
+| ~~**P0**~~ | ~~Sign Railway DPA~~ | Done — signed 2026-04-11 by David Smith. Awaiting countersigned copy from legal@railway.app |
 | **P1** | Complete combined DPIA + FRIA document | Mandatory pre-deployment for high-risk AI |
-| **P2** | Encrypt SQLite at rest on Railway | Security measure; risk is low but expected for children's data |
+| ~~**P1**~~ | ~~Disable or warn on Gemini provider for school deployment~~ | Done — app now uses billing-backed Gemini API key (`AIzaSy...`). Billing-enabled keys are governed by Google's Cloud terms (including DPA) not AI Studio free-tier terms. No training on customer data. Gemini 2.5 Flash is now the default model via `models/gemini-2.5-flash`. ROPA updated below. |
+| ~~**P2**~~ | ~~Encrypt SQLite at rest on Railway~~ | Done — Railway provides AES-256 infrastructure-level encryption at rest on all plans (including Hobby) via KMS. Confirmed via Railway Trust Center (trust.railway.com). SOC 2 Type II certified. |
 | ~~**P2**~~ | ~~Add data export endpoint~~ | Done — `GET /export/my-data`, "Download my data" button in Settings |
 | ~~**P2**~~ | ~~Add in-app privacy notice and data usage summary~~ | Done — collapsible "Privacy & data use" section in Settings |
 | ~~**P3**~~ | ~~Draft school-facing Privacy Notice and DPA template~~ | Done — `legal/school-dpa-en.md` + `legal/school-dpa-cs.md` |
@@ -262,9 +264,9 @@ To be maintained by the operator and provided to each school for inclusion in th
 | Purpose | Supporting teachers in class management and educational planning |
 | Lawful basis | Public task (Art. 6(1)(e)) — Education Act No. 561/2004 |
 | Retention period | Academic year + 1 year for AI-generated data; official school records follow archiving law |
-| Recipients / sub-processors | OpenAI Ireland Ltd (AI processing), Railway (hosting), Vercel (hosting), Google (Workspace APIs) |
-| Third-country transfers | USA — OpenAI, Railway (EU region configured), Vercel (EU region configured) |
-| Transfer mechanism | EU-US Data Privacy Framework (OpenAI); DPA with EU data residency (Railway, Vercel) |
+| Recipients / sub-processors | OpenAI Ireland Ltd (fallback AI processing), Google LLC (Gemini API — primary AI, Workspace APIs), Railway (hosting), Vercel (hosting) |
+| Third-country transfers | USA — OpenAI (fallback), Railway (EU region configured), Vercel (EU region configured); Google Gemini — processed under Google Cloud DPA with EU data residency option |
+| Transfer mechanism | EU-US Data Privacy Framework (OpenAI); Google Cloud DPA (Gemini, billing-enabled key — no training on data); DPA with EU data residency (Railway, Vercel) |
 | Security measures | OAuth 2.0, HTTPS, per-user data isolation, pseudonymization (post-remediation) |
 | DPIA required? | Yes — mandatory (children's data + high-risk AI) |
 

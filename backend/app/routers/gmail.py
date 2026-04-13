@@ -111,14 +111,12 @@ async def ai_compose(body: AiComposeRequest, request: Request):
     from app.services.profile import ProfileService
 
     user_id = get_user_id_from_token(token)
-    user_key = ProfileService(user_id).get_api_key()
-    settings = get_settings()
-    api_key = user_key or settings.openai_api_key
-    client = OpenAI(api_key=api_key)
+    from app.services.profile import get_ai_client
+    client, ai_model = get_ai_client(user_id)
 
     names_str = ", ".join(body.student_names)
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model=ai_model,
         messages=[
             {"role": "system", "content": "You draft clear, professional emails for teachers."},
             {"role": "user", "content": (

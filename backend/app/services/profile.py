@@ -213,3 +213,28 @@ class ProfileService:
         if not parts:
             return ""
         return "## About the Teacher\n" + "\n".join(parts)
+
+
+def get_ai_client(user_id: str):
+    """Return (OpenAI client, model_name) for the user's configured AI provider.
+    Falls back to env-level keys if no per-user key is set.
+    Returns (None, model_name) if no key is available.
+    """
+    from openai import OpenAI
+    from app.config import get_settings
+    settings = get_settings()
+    ps = ProfileService(user_id)
+    provider = ps.get_ai_provider()
+    if provider == "gemini":
+        gemini_key = ps.get_gemini_api_key() or settings.gemini_api_key
+        if gemini_key:
+            return OpenAI(
+                api_key=gemini_key,
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            ), "models/gemini-2.5-flash"
+    # Fall through to OpenAI
+    user_key = ps.get_api_key()
+    api_key = user_key or settings.openai_api_key
+    if api_key and api_key != "your-api-key-here":
+        return OpenAI(api_key=api_key), "gpt-4o"
+    return None, "gpt-4o"

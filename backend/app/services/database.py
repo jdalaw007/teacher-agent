@@ -241,6 +241,13 @@ def init_db():
         "ALTER TABLE grader_results ADD COLUMN student_user_id TEXT",
         "ALTER TABLE grader_results ADD COLUMN submission_id TEXT",
         "ALTER TABLE students ADD COLUMN codename TEXT DEFAULT ''",
+        """CREATE TABLE IF NOT EXISTS test_submissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            test_id TEXT NOT NULL,
+            student_name TEXT NOT NULL,
+            answers TEXT NOT NULL,
+            submitted_at TEXT NOT NULL
+        )""",
     ]:
         try:
             conn.execute(migration)

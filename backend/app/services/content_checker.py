@@ -1,20 +1,11 @@
 import json
 import sys
-from openai import OpenAI
-from app.config import get_settings
-
-settings = get_settings()
 
 
 class ContentCheckerService:
     def __init__(self, user_id: str):
-        from app.services.profile import ProfileService
-        user_key = ProfileService(user_id).get_api_key()
-        api_key = user_key or settings.openai_api_key
-        if api_key and api_key != "your-api-key-here":
-            self.client = OpenAI(api_key=api_key)
-        else:
-            self.client = None
+        from app.services.profile import get_ai_client
+        self.client, self.model = get_ai_client(user_id)
 
     def check_content(self, content: str, content_type: str, grade_level: str = None, subject: str = None):
         """Generator yielding SSE-formatted strings with the review."""
@@ -60,7 +51,7 @@ Be concise and direct. If content is good, say so briefly. Do not pad the respon
 
         try:
             stream = self.client.chat.completions.create(
-                model="gpt-4o",
+                model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=600,
                 stream=True,

@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     secret_key: str
     frontend_url: str = "http://localhost:3000"
     openai_api_key: str = "your-api-key-here"
+    gemini_api_key: str = ""
 
     class Config:
         env_file = ".env"

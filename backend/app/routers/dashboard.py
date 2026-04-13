@@ -31,13 +31,23 @@ def _get_token(request: Request) -> str:
     return auth_header.split(" ")[1]
 
 
-def _get_openai_client(user_id: str):
+def _get_ai_client(user_id: str):
+    """Return (client, model) tuple for the user's configured AI provider."""
     from app.services.profile import ProfileService
-    user_key = ProfileService(user_id).get_api_key()
+    ps = ProfileService(user_id)
+    provider = ps.get_ai_provider()
+    if provider == "gemini":
+        gemini_key = ps.get_gemini_api_key() or settings.gemini_api_key
+        if gemini_key:
+            return OpenAI(
+                api_key=gemini_key,
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            ), "models/gemini-2.5-flash"
+    user_key = ps.get_api_key()
     api_key = user_key or settings.openai_api_key
     if not api_key or api_key == "your-api-key-here":
-        return None
-    return OpenAI(api_key=api_key)
+        return None, "gpt-4o"
+    return OpenAI(api_key=api_key), "gpt-4o"
 
 
 def _get_summary(user_id: str) -> dict:
@@ -103,7 +113,7 @@ _FALLBACK_PROMPTS = [
 async def get_suggested_prompts(request: Request):
     """Return 4 context-aware suggested prompts based on recent classroom activity."""
     user_id = _get_user_id(request)
-    client = _get_openai_client(user_id)
+    client, model = _get_ai_client(user_id)
     if not client:
         return {"prompts": _FALLBACK_PROMPTS}
 
@@ -126,7 +136,7 @@ async def get_suggested_prompts(request: Request):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=model,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=200,
             temperature=0.7,
@@ -189,17 +199,17 @@ async def get_greeting(request: Request):
         f"2-3 sentences max. No bullet points. Do not add any closing remarks or sign-offs."
     )
 
-    client = _get_openai_client(user_id)
+    client, model = _get_ai_client(user_id)
 
     async def event_stream():
         if not client:
-            yield f"data: {json.dumps({'type': 'content', 'content': f'Good {time_of_day}, {teacher_name}! OpenAI API key not configured — add yours in Settings.'})}\n\n"
+            yield f"data: {json.dumps({'type': 'content', 'content': f'Good {time_of_day}, {teacher_name}! AI API key not configured — add yours in Settings.'})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
             return
 
         try:
             stream = client.chat.completions.create(
-                model="gpt-4o",
+                model=model,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=150,
                 stream=True,

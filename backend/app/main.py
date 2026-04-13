@@ -7,7 +7,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.config import get_settings
 from app.limiter import limiter
-from app.routers import auth, classroom, drive, corpus, agent, assignments, students, linked_classes, scheduled_posts, chat, onboarding, dashboard, content, calendar, gmail, feedback, grader, class_preferences, files, erasure, audit, export
+from app.routers import auth, classroom, drive, corpus, agent, assignments, students, linked_classes, scheduled_posts, chat, onboarding, dashboard, content, calendar, gmail, feedback, grader, class_preferences, files, erasure, audit, export, test_router
 import traceback
 import sys
 
@@ -140,6 +140,7 @@ app.include_router(files.router, prefix="/files", tags=["Files"])
 app.include_router(erasure.router, prefix="/erase", tags=["Erasure"])
 app.include_router(audit.router, prefix="/audit", tags=["Audit"])
 app.include_router(export.router, prefix="/export", tags=["Export"])
+app.include_router(test_router.router, prefix="/test", tags=["Test"])
 
 
 @app.get("/health")

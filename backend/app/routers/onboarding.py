@@ -96,7 +96,7 @@ async def test_gemini_key(body: TestGeminiKeyRequest):
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
         )
         client.chat.completions.create(
-            model="gemini-2.0-flash",
+            model="models/gemini-2.5-flash",
             messages=[{"role": "user", "content": "hi"}],
             max_tokens=1,
         )

@@ -20,3 +20,9 @@ a {
   color: inherit;
   text-decoration: none;
 }
+
+@media print {
+  .no-print { display: none !important; }
+  nav, header { display: none !important; }
+  body { background: white !important; }
+}

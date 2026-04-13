@@ -1,20 +1,15 @@
 import json
 import sys
-from openai import OpenAI
-from app.config import get_settings
 from app.services import memory
 from app.services.prompts import INSIGHT_DISTILLATION_PROMPT
 from app.services.database import get_db
-
-settings = get_settings()
 
 
 class LearningService:
     def __init__(self, teacher_user_id: str):
         self.teacher_user_id = teacher_user_id
-        self.client = None
-        if settings.openai_api_key and settings.openai_api_key != "your-api-key-here":
-            self.client = OpenAI(api_key=settings.openai_api_key)
+        from app.services.profile import get_ai_client
+        self.client, self.model = get_ai_client(teacher_user_id)
 
     def maybe_distill_insights(self):
         """Distill insights if there are 5+ unprocessed episodic memories."""
@@ -50,7 +45,7 @@ class LearningService:
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o",
+                model=self.model,
                 messages=[
                     {"role": "system", "content": INSIGHT_DISTILLATION_PROMPT},
                     {"role": "user", "content": memory_text[:10000]},
