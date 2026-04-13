@@ -30,6 +30,9 @@ export default function Navbar({ userName }: NavbarProps) {
         <button onClick={() => router.push('/chat')} style={styles.navLink}>
           Chat
         </button>
+        <button onClick={() => router.push('/test-results')} style={styles.navLink}>
+          Tests
+        </button>
       </div>
       <div style={styles.right}>
         {userName && <span style={styles.userName}>{userName}</span>}
