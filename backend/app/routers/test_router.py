@@ -1,16 +1,31 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from typing import Dict, Any
-import json
+from typing import Dict, Any, Optional
+import json, uuid
 from datetime import datetime
 from app.services.database import get_db
 from app.services.token_store import get_user_id_from_token
+from app.services.test_html import generate_test_html
+from app.services.test_parser import parse_test, parse_answer_key
+from app.services.profile import get_ai_client
 
 router = APIRouter()
 
 # ---------------------------------------------------------------------------
-# Student-facing test page
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _require_auth(request: Request) -> str:
+    """Return user_id or raise 401."""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing authorization")
+    return get_user_id_from_token(auth.split(" ")[1])
+
+
+# ---------------------------------------------------------------------------
+# Hardcoded Unit 7 test (kept for backward compatibility)
 # ---------------------------------------------------------------------------
 
 TEST_HTML = """<!DOCTYPE html>
@@ -36,11 +51,7 @@ h1 { font-size: 22px; margin: 0; }
 .audio-notice { background: #fff8e1; border: 1px solid #ffc107; border-radius: 6px; padding: 8px 14px; margin: 8px 0 12px; font-size: 13px; color: #7a5800; }
 .example { color: #555; margin: 6px 0 10px 16px; font-style: italic; }
 .q { margin: 9px 0; line-height: 1.9; }
-input.ans {
-  border: none; border-bottom: 2px solid #555; background: transparent;
-  font-size: 14px; padding: 1px 4px; outline: none; min-width: 110px;
-  spellcheck: false;
-}
+input.ans { border: none; border-bottom: 2px solid #555; background: transparent; font-size: 14px; padding: 1px 4px; outline: none; min-width: 110px; }
 input.ans:focus { border-bottom-color: #0066cc; background: #f0f8ff; }
 .ans-sm { min-width: 80px; }
 .ans-lg { min-width: 230px; }
@@ -321,7 +332,7 @@ function submitTest() {
     window.scrollTo(0, 0);
   })
   .catch(e => {
-    err.textContent = 'Could not submit — please tell your teacher. (' + e.message + ')';
+    err.textContent = 'Could not submit -- please tell your teacher. (' + e.message + ')';
     btn.disabled = false;
     btn.textContent = 'Submit test';
   });
@@ -332,11 +343,11 @@ function submitTest() {
 
 
 # ---------------------------------------------------------------------------
-# Endpoints
+# Unit 7 endpoints (specific routes — must be defined before /{test_id})
 # ---------------------------------------------------------------------------
 
 @router.get("/unit7", response_class=HTMLResponse)
-async def get_test():
+async def get_unit7_test():
     return TEST_HTML
 
 
@@ -346,7 +357,7 @@ class SubmitRequest(BaseModel):
 
 
 @router.post("/unit7/submit")
-async def submit_test(body: SubmitRequest):
+async def submit_unit7(body: SubmitRequest):
     name = body.student_name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Student name required")
@@ -363,12 +374,8 @@ async def submit_test(body: SubmitRequest):
 
 
 @router.get("/unit7/submissions")
-async def get_submissions(request: Request):
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing authorization")
-    token = auth.split(" ")[1]
-    get_user_id_from_token(token)  # raises 401 if invalid
+async def get_unit7_submissions(request: Request):
+    _require_auth(request)
     db = get_db()
     try:
         rows = db.execute(
@@ -387,16 +394,169 @@ async def get_submissions(request: Request):
 
 
 @router.delete("/unit7/submissions")
-async def clear_submissions(request: Request):
-    """Delete all submissions for unit7. Teacher only."""
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing authorization")
-    token = auth.split(" ")[1]
-    get_user_id_from_token(token)
+async def clear_unit7_submissions(request: Request):
+    _require_auth(request)
     db = get_db()
     try:
         db.execute("DELETE FROM test_submissions WHERE test_id = ?", ("unit7",))
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Dynamic test management — also before /{test_id} catch-all
+# ---------------------------------------------------------------------------
+
+@router.post("/upload")
+async def upload_test(
+    request: Request,
+    test_file: UploadFile = File(...),
+    answer_key_file: Optional[UploadFile] = File(None),
+):
+    """Parse a test doc (txt/docx) with AI and save it. Returns {test_id, title, url}."""
+    user_id = _require_auth(request)
+
+    ai_client, model = get_ai_client(user_id)
+    if not ai_client:
+        raise HTTPException(status_code=400, detail="No AI API key configured. Add one in Settings.")
+
+    # Parse test document
+    file_bytes = await test_file.read()
+    try:
+        test_data = parse_test(file_bytes, test_file.filename or "test.txt", ai_client, model)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Could not parse test: {e}")
+
+    # Parse answer key if provided
+    answer_key: dict = {}
+    if answer_key_file and answer_key_file.filename:
+        key_bytes = await answer_key_file.read()
+        try:
+            answer_key = parse_answer_key(key_bytes, answer_key_file.filename, ai_client, model)
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"Could not parse answer key: {e}")
+
+    # Save to DB
+    test_id = uuid.uuid4().hex[:8]
+    title = test_data.get("title", "Untitled Test")
+    db = get_db()
+    try:
+        db.execute(
+            "INSERT INTO tests (id, teacher_user_id, title, test_data, answer_key) VALUES (?, ?, ?, ?, ?)",
+            (test_id, user_id, title, json.dumps(test_data), json.dumps(answer_key))
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    return {"test_id": test_id, "title": title, "url": f"/test/{test_id}"}
+
+
+@router.get("/list")
+async def list_tests(request: Request):
+    """Return all tests belonging to the authenticated teacher."""
+    user_id = _require_auth(request)
+    db = get_db()
+    try:
+        rows = db.execute(
+            """SELECT t.id, t.title, t.created_at,
+                      (SELECT COUNT(*) FROM test_submissions WHERE test_id = t.id) as submission_count
+               FROM tests t WHERE t.teacher_user_id = ? ORDER BY t.created_at DESC""",
+            (user_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Dynamic test pages — /{test_id} catch-all (must be LAST)
+# ---------------------------------------------------------------------------
+
+@router.get("/{test_id}", response_class=HTMLResponse)
+async def get_dynamic_test(test_id: str):
+    """Serve the test HTML page for students (public, no auth)."""
+    db = get_db()
+    try:
+        row = db.execute("SELECT test_data FROM tests WHERE id = ?", (test_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Test not found")
+        test_data = json.loads(row["test_data"])
+    finally:
+        db.close()
+    return HTMLResponse(generate_test_html(test_data, test_id))
+
+
+@router.post("/{test_id}/submit")
+async def submit_dynamic_test(test_id: str, body: SubmitRequest):
+    """Accept a student submission for a dynamic test (public, no auth)."""
+    db = get_db()
+    try:
+        if not db.execute("SELECT id FROM tests WHERE id = ?", (test_id,)).fetchone():
+            raise HTTPException(status_code=404, detail="Test not found")
+        name = body.student_name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Student name required")
+        db.execute(
+            "INSERT INTO test_submissions (test_id, student_name, answers, submitted_at) VALUES (?, ?, ?, ?)",
+            (test_id, name, json.dumps(body.answers), datetime.utcnow().isoformat())
+        )
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+@router.get("/{test_id}/submissions")
+async def get_dynamic_submissions(test_id: str, request: Request):
+    """Return submissions + answer key for a dynamic test (teacher only)."""
+    user_id = _require_auth(request)
+    db = get_db()
+    try:
+        test_row = db.execute(
+            "SELECT title, test_data, answer_key FROM tests WHERE id = ? AND teacher_user_id = ?",
+            (test_id, user_id)
+        ).fetchone()
+        if not test_row:
+            raise HTTPException(status_code=404, detail="Test not found")
+
+        rows = db.execute(
+            "SELECT id, student_name, answers, submitted_at FROM test_submissions "
+            "WHERE test_id = ? ORDER BY submitted_at ASC",
+            (test_id,)
+        ).fetchall()
+
+        submissions = []
+        for row in rows:
+            r = dict(row)
+            r["answers"] = json.loads(r["answers"])
+            submissions.append(r)
+
+        return {
+            "title": test_row["title"],
+            "sections": json.loads(test_row["test_data"]).get("sections", []),
+            "answer_key": json.loads(test_row["answer_key"]),
+            "submissions": submissions,
+        }
+    finally:
+        db.close()
+
+
+@router.delete("/{test_id}")
+async def delete_test(test_id: str, request: Request):
+    """Delete a test and all its submissions (teacher only)."""
+    user_id = _require_auth(request)
+    db = get_db()
+    try:
+        row = db.execute("SELECT teacher_user_id FROM tests WHERE id = ?", (test_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        if row["teacher_user_id"] != user_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        db.execute("DELETE FROM test_submissions WHERE test_id = ?", (test_id,))
+        db.execute("DELETE FROM tests WHERE id = ?", (test_id,))
         db.commit()
         return {"ok": True}
     finally:

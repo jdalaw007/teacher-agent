@@ -30,7 +30,7 @@ export default function Navbar({ userName }: NavbarProps) {
         <button onClick={() => router.push('/chat')} style={styles.navLink}>
           Chat
         </button>
-        <button onClick={() => router.push('/test-results')} style={styles.navLink}>
+        <button onClick={() => router.push('/tests')} style={styles.navLink}>
           Tests
         </button>
       </div>

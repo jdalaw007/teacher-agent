@@ -248,6 +248,14 @@ def init_db():
             answers TEXT NOT NULL,
             submitted_at TEXT NOT NULL
         )""",
+        """CREATE TABLE IF NOT EXISTS tests (
+            id TEXT PRIMARY KEY,
+            teacher_user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            test_data TEXT NOT NULL,
+            answer_key TEXT DEFAULT '{}',
+            created_at TEXT DEFAULT (datetime('now'))
+        )""",
     ]:
         try:
             conn.execute(migration)
