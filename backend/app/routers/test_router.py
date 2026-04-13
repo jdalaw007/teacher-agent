@@ -472,6 +472,124 @@ async def list_tests(request: Request):
 
 
 # ---------------------------------------------------------------------------
+# Rubric save + AI essay grading — also before /{test_id} catch-all
+# ---------------------------------------------------------------------------
+
+class RubricRequest(BaseModel):
+    rubric: str
+
+
+@router.put("/{test_id}/rubric")
+async def save_rubric(test_id: str, body: RubricRequest, request: Request):
+    """Save the essay grading rubric for a test."""
+    user_id = _require_auth(request)
+    db = get_db()
+    try:
+        row = db.execute("SELECT teacher_user_id FROM tests WHERE id = ?", (test_id,)).fetchone()
+        if not row or row["teacher_user_id"] != user_id:
+            raise HTTPException(status_code=404, detail="Not found")
+        db.execute("UPDATE tests SET rubric = ? WHERE id = ?", (body.rubric.strip(), test_id))
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+@router.post("/{test_id}/grade-essays")
+async def grade_essays(test_id: str, body: RubricRequest, request: Request):
+    """Grade all essay answers with AI. Also saves the rubric. Returns {sub_id: {q_key: {score, reason}}}."""
+    user_id = _require_auth(request)
+    rubric = body.rubric.strip()
+    if not rubric:
+        raise HTTPException(status_code=400, detail="Rubric is required for AI grading")
+
+    ai_client, model = get_ai_client(user_id)
+    if not ai_client:
+        raise HTTPException(status_code=400, detail="No AI API key configured. Add one in Settings.")
+
+    db = get_db()
+    try:
+        test_row = db.execute(
+            "SELECT title, test_data FROM tests WHERE id = ? AND teacher_user_id = ?",
+            (test_id, user_id)
+        ).fetchone()
+        if not test_row:
+            raise HTTPException(status_code=404, detail="Test not found")
+
+        # Save rubric
+        db.execute("UPDATE tests SET rubric = ? WHERE id = ?", (rubric, test_id))
+        db.commit()
+
+        sections = json.loads(test_row["test_data"]).get("sections", [])
+        essay_keys = [
+            f"s{sec['block_num']}_q{q['num']}"
+            for sec in sections
+            for q in sec.get("questions", [])
+            if q.get("type") == "essay"
+        ]
+
+        if not essay_keys:
+            return {}
+
+        rows = db.execute(
+            "SELECT id, student_name, answers, ai_grades FROM test_submissions WHERE test_id = ? ORDER BY submitted_at ASC",
+            (test_id,)
+        ).fetchall()
+        submissions = [dict(r) for r in rows]
+    finally:
+        db.close()
+
+    results: dict = {}
+
+    for sub in submissions:
+        answers = json.loads(sub["answers"])
+        existing = json.loads(sub.get("ai_grades") or "{}")
+        student_grades: dict = dict(existing)
+
+        for q_key in essay_keys:
+            essay_text = (answers.get(q_key) or "").strip()
+            if not essay_text:
+                student_grades[q_key] = {"score": 0, "reason": "No answer submitted"}
+                continue
+
+            prompt = (
+                f"You are grading a student essay out of 10.\n"
+                f"Rubric: {rubric}\n\n"
+                f"Student essay:\n{essay_text}\n\n"
+                f"Return ONLY valid JSON with no explanation: {{\"score\": <0-10>, \"reason\": \"<one sentence>\"}}"
+            )
+            try:
+                resp = ai_client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=120,
+                )
+                raw = (resp.choices[0].message.content or "").strip()
+                import re as _re
+                raw = _re.sub(r"^```(?:json)?\s*", "", raw)
+                raw = _re.sub(r"\s*```$", "", raw)
+                grade = json.loads(raw)
+                student_grades[q_key] = {"score": int(grade["score"]), "reason": str(grade["reason"])}
+            except Exception as e:
+                student_grades[q_key] = {"score": -1, "reason": f"Grading error: {e}"}
+
+        # Persist grades back to DB
+        db2 = get_db()
+        try:
+            db2.execute(
+                "UPDATE test_submissions SET ai_grades = ? WHERE id = ?",
+                (json.dumps(student_grades), sub["id"])
+            )
+            db2.commit()
+        finally:
+            db2.close()
+
+        results[sub["id"]] = student_grades
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Dynamic test pages — /{test_id} catch-all (must be LAST)
 # ---------------------------------------------------------------------------
 
@@ -516,14 +634,14 @@ async def get_dynamic_submissions(test_id: str, request: Request):
     db = get_db()
     try:
         test_row = db.execute(
-            "SELECT title, test_data, answer_key FROM tests WHERE id = ? AND teacher_user_id = ?",
+            "SELECT title, test_data, answer_key, rubric FROM tests WHERE id = ? AND teacher_user_id = ?",
             (test_id, user_id)
         ).fetchone()
         if not test_row:
             raise HTTPException(status_code=404, detail="Test not found")
 
         rows = db.execute(
-            "SELECT id, student_name, answers, submitted_at FROM test_submissions "
+            "SELECT id, student_name, answers, submitted_at, ai_grades FROM test_submissions "
             "WHERE test_id = ? ORDER BY submitted_at ASC",
             (test_id,)
         ).fetchall()
@@ -532,12 +650,14 @@ async def get_dynamic_submissions(test_id: str, request: Request):
         for row in rows:
             r = dict(row)
             r["answers"] = json.loads(r["answers"])
+            r["ai_grades"] = json.loads(r["ai_grades"] or "{}")
             submissions.append(r)
 
         return {
             "title": test_row["title"],
             "sections": json.loads(test_row["test_data"]).get("sections", []),
             "answer_key": json.loads(test_row["answer_key"]),
+            "rubric": test_row["rubric"] or "",
             "submissions": submissions,
         }
     finally:

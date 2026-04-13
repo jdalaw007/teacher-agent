@@ -256,6 +256,8 @@ def init_db():
             answer_key TEXT DEFAULT '{}',
             created_at TEXT DEFAULT (datetime('now'))
         )""",
+        "ALTER TABLE tests ADD COLUMN rubric TEXT DEFAULT ''",
+        "ALTER TABLE test_submissions ADD COLUMN ai_grades TEXT DEFAULT '{}'",
     ]:
         try:
             conn.execute(migration)
