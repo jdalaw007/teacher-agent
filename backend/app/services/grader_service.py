@@ -222,7 +222,7 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
 
             try:
                 tone_section = f"Tone and style instructions: {tone_instructions}\n\n" if tone_instructions and tone_instructions.strip() else ""
-                clean_text = scrub_submission_text(text, known_names=list(student_names.values()))[:6000]
+                clean_text = scrub_submission_text(text, known_names=list(student_names.values()))[:4000]
                 prompt = GRADE_PROMPT.format(
                     max_points=max_points,
                     rubric=rubric,
@@ -235,11 +235,13 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=600,
                 )
-                raw = (response.choices[0].message.content or "").strip()
+                choice = response.choices[0]
+                raw = (choice.message.content or "").strip()
+                finish = getattr(choice, "finish_reason", "unknown")
+                if not raw:
+                    raise ValueError(f"AI returned empty response (finish_reason={finish})")
                 if "{" in raw:
                     raw = raw[raw.find("{"):raw.rfind("}") + 1]
-                if not raw:
-                    raise ValueError("AI returned empty response")
                 try:
                     result = json.loads(raw)
                 except json.JSONDecodeError:
