@@ -87,6 +87,24 @@ ANSWER KEY TEXT:
 """
 
 
+def _clean_and_parse(raw: str) -> dict:
+    """Strip fences, extract outermost JSON object, repair and parse."""
+    raw = raw.strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
+    # Extract outermost { ... } in case model added extra text
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start != -1 and end != -1:
+        raw = raw[start:end + 1]
+    # Try standard parse first, fall back to json_repair
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        from json_repair import repair_json
+        return json.loads(repair_json(raw))
+
+
 def parse_test(file_bytes: bytes, filename: str, ai_client, model: str) -> dict:
     """Parse test file into structured JSON using AI."""
     text = extract_text(file_bytes, filename)
@@ -98,10 +116,7 @@ def parse_test(file_bytes: bytes, filename: str, ai_client, model: str) -> dict:
         max_tokens=4000,
     )
     raw = response.choices[0].message.content.strip()
-    # Strip markdown code fences if present
-    raw = re.sub(r"^```(?:json)?\s*", "", raw)
-    raw = re.sub(r"\s*```$", "", raw)
-    return json.loads(raw)
+    return _clean_and_parse(raw)
 
 
 def parse_answer_key(file_bytes: bytes, filename: str, ai_client, model: str) -> dict:
@@ -115,6 +130,4 @@ def parse_answer_key(file_bytes: bytes, filename: str, ai_client, model: str) ->
         max_tokens=2000,
     )
     raw = response.choices[0].message.content.strip()
-    raw = re.sub(r"^```(?:json)?\s*", "", raw)
-    raw = re.sub(r"\s*```$", "", raw)
-    return json.loads(raw)
+    return _clean_and_parse(raw)
