@@ -96,8 +96,8 @@ Max points: {max_points}
 Return a short rubric (3-5 criteria with point values that add up to {max_points}). Plain text, no JSON."""
 
 
-GRADE_PROMPT = """You are grading a student assignment. Do two things:
-1. AI-DETECTION: Rate 1-10 how likely this was written by AI (10=definitely AI).
+GRADE_PROMPT = """You are grading a student assignment. Do the following:
+1. ORIGINALITY: Rate 1-10 how original and personal this writing feels (10=very original, 1=very generic/formulaic). Note your reasoning briefly.
 2. GRADING: Grade against this rubric and assign a score out of {max_points}:
 {rubric}
 
