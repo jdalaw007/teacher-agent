@@ -104,6 +104,7 @@ export default function TestsPage() {
 
   return (
     <div style={s.page}>
+      <button style={s.backBtn} onClick={() => router.push('/dashboard')}>&larr; Dashboard</button>
       <h1 style={s.pageTitle}>Tests</h1>
 
       {/* Upload card */}
@@ -197,6 +198,7 @@ export default function TestsPage() {
 
 const s: Record<string, React.CSSProperties> = {
   page: { maxWidth: 900, margin: "0 auto", padding: "28px 20px", fontFamily: "Arial, sans-serif" },
+  backBtn: { background: "none", border: "none", color: "#0066cc", cursor: "pointer", fontSize: 13, padding: "0 0 12px", display: "block" },
   pageTitle: { fontSize: 24, margin: "0 0 24px", color: "#111" },
   card: { background: "white", border: "1px solid #ddd", borderRadius: 8, padding: "24px 28px", marginBottom: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.07)" },
   cardTitle: { fontSize: 17, fontWeight: "bold", margin: "0 0 12px", color: "#111" },

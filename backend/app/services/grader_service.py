@@ -233,10 +233,11 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                 response = client.chat.completions.create(
                     model=ai_model,
                     messages=[{"role": "user", "content": prompt}],
-                    response_format={"type": "json_object"},
                     max_tokens=400,
                 )
-                result = json.loads(response.choices[0].message.content)
+                raw = (response.choices[0].message.content or "").strip()
+                raw = raw[raw.find("{"):raw.rfind("}") + 1] if "{" in raw else raw
+                result = json.loads(raw)
                 flagged = name in plagiarism_students
                 uid_sid = sub_ids.get(name, ("", ""))
                 _save_result(
@@ -266,7 +267,7 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                 })
             except Exception as e:
                 yield sse({"type": "student_result", "student_name": name, "no_text": True,
-                           "note": f"Grading failed: {str(e)}"})
+                           "note": f"Grading error: {str(e)[:200]}"})
 
         yield sse({"type": "done"})
 
