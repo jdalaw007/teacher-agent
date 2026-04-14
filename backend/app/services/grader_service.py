@@ -223,6 +223,11 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
             try:
                 tone_section = f"Tone and style instructions: {tone_instructions}\n\n" if tone_instructions and tone_instructions.strip() else ""
                 clean_text = scrub_submission_text(text, known_names=list(student_names.values()))[:4000]
+                if not clean_text.strip():
+                    yield sse({"type": "student_result", "student_name": name, "no_text": True,
+                               "note": f"Text was extracted ({len(text)} chars) but scrubbed to empty"})
+                    continue
+                yield sse({"type": "status", "message": f"Grading {name} — {len(clean_text)} chars extracted..."})
                 prompt = GRADE_PROMPT.format(
                     max_points=max_points,
                     rubric=rubric,
@@ -235,6 +240,8 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=600,
                 )
+                if not response.choices:
+                    raise ValueError("AI returned no choices in response")
                 choice = response.choices[0]
                 raw = (choice.message.content or "").strip()
                 finish = getattr(choice, "finish_reason", "unknown")
