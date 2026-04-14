@@ -27,7 +27,7 @@ export default function TestsPage() {
   useEffect(() => { loadTests(); }, []);
 
   function getToken() {
-    return localStorage.getItem("google_token") || localStorage.getItem("access_token") || "";
+    return localStorage.getItem("token") || "";
   }
 
   function loadTests() {
@@ -114,11 +114,11 @@ export default function TestsPage() {
         <div style={s.fileRow}>
           <div style={s.fileGroup}>
             <label style={s.label}>Test document <span style={s.required}>*</span></label>
-            <input ref={testFileRef} type="file" accept=".txt,.docx" style={s.fileInput} />
+            <input ref={testFileRef} type="file" accept=".txt,.doc,.docx" style={s.fileInput} />
           </div>
           <div style={s.fileGroup}>
             <label style={s.label}>Answer key <span style={s.optional}>(optional)</span></label>
-            <input ref={keyFileRef} type="file" accept=".txt,.docx,.pdf" style={s.fileInput} />
+            <input ref={keyFileRef} type="file" accept=".txt,.doc,.docx,.pdf" style={s.fileInput} />
           </div>
         </div>
 

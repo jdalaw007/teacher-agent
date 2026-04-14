@@ -77,7 +77,7 @@ export default function TestResultsPage() {
   const rubricSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function getToken() {
-    return localStorage.getItem("google_token") || localStorage.getItem("access_token") || "";
+    return localStorage.getItem("token") || "";
   }
 
   useEffect(() => {
