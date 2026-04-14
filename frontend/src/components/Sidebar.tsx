@@ -30,6 +30,7 @@ export default function Sidebar() {
     { label: t('files'), path: '/files', icon: <FolderIcon /> },
     { label: t('inbox'), path: '/inbox', icon: <InboxIcon /> },
     { label: t('calendar'), path: '/calendar', icon: <CalendarIcon /> },
+    { label: 'Testy', path: '/tests', icon: <TestIcon /> },
   ]
 
   return (
@@ -159,6 +160,17 @@ function PersonIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
       <circle cx="12" cy="7" r="4"/>
+    </svg>
+  )
+}
+
+function TestIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8z" />
+      <polyline points="17 3 17 8 12 8" />
+      <line x1="8" y1="13" x2="16" y2="13" />
+      <line x1="8" y1="17" x2="12" y2="17" />
     </svg>
   )
 }
