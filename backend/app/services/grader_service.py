@@ -238,8 +238,27 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                 choice = response.choices[0]
                 raw = (choice.message.content or "").strip()
                 finish = getattr(choice, "finish_reason", "unknown")
+
+                # If empty, retry with a simpler prompt (avoids Gemini safety triggers)
                 if not raw:
-                    raise ValueError(f"AI returned empty response (finish_reason={finish})")
+                    simple_prompt = (
+                        f"Please grade this student assignment out of {max_points} points.\n\n"
+                        f"Rubric: {rubric}\n\n"
+                        f"Assignment text:\n{clean_text[:2000]}\n\n"
+                        f"{language_instruction}"
+                        f"Return JSON only: {{\"ai_score\": 5, \"ai_reasoning\": \"n/a\", "
+                        f"\"grade\": <int>, \"feedback\": \"<string>\"}}"
+                    )
+                    retry = client.chat.completions.create(
+                        model=ai_model,
+                        messages=[{"role": "user", "content": simple_prompt}],
+                        max_tokens=400,
+                    )
+                    raw = (retry.choices[0].message.content or "").strip()
+                    finish2 = getattr(retry.choices[0], "finish_reason", "unknown")
+                    if not raw:
+                        raise ValueError(f"AI returned empty response (finish_reason={finish}/{finish2})")
+
                 if "{" in raw:
                     raw = raw[raw.find("{"):raw.rfind("}") + 1]
                 try:
