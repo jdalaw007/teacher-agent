@@ -141,7 +141,7 @@ def parse_test(file_bytes: bytes, filename: str, ai_client, model: str) -> dict:
     response = ai_client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=4000,
+        max_tokens=8000,
     )
     raw = response.choices[0].message.content.strip()
     return _clean_and_parse(raw)

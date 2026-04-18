@@ -150,9 +150,15 @@ def _render_question(q: dict, block_num: int) -> str:
     elif qtype == "multiple_choice":
         options = q.get("options") or []
         radios = '<div class="options-row">'
-        for letter, label in options:
-            l = html_lib.escape(letter)
-            lb = html_lib.escape(label)
+        for opt in options:
+            if isinstance(opt, (list, tuple)) and len(opt) >= 2:
+                letter, label = opt[0], opt[1]
+            elif isinstance(opt, (list, tuple)) and len(opt) == 1:
+                letter, label = opt[0], opt[0]
+            else:
+                letter, label = str(opt), str(opt)
+            l = html_lib.escape(str(letter))
+            lb = html_lib.escape(str(label))
             radios += f'<label><input type="radio" name="{q_key}" value="{l}"> {l}) {lb}</label>'
         radios += '</div>'
         return f'<div class="q">{q["num"]}.\n{radios}</div>'
