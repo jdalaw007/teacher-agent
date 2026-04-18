@@ -143,10 +143,17 @@ def parse_test(file_bytes: bytes, filename: str, ai_client, model: str) -> dict:
     response = ai_client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=8000,
+        max_tokens=16000,
     )
     raw = response.choices[0].message.content.strip()
-    return _clean_and_parse(raw)
+    result = _clean_and_parse(raw)
+    total_questions = sum(len(s.get("questions", [])) for s in result.get("sections", []))
+    if total_questions < 3:
+        raise ValueError(
+            f"AI only parsed {total_questions} question(s) — response may have been truncated. "
+            f"Try uploading with OpenAI instead, or split the test into smaller sections."
+        )
+    return result
 
 
 def parse_answer_key(file_bytes: bytes, filename: str, ai_client, model: str) -> dict:
