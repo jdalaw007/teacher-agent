@@ -141,14 +141,16 @@ Return a short rubric (3-5 criteria with point values that add up to {max_points
 
 
 GRADE_PROMPT = """You are grading a student assignment. Do the following:
-1. ORIGINALITY: Rate 1-10 how original and personal this writing feels (10=very original, 1=very generic/formulaic). Note your reasoning briefly.
-2. GRADING: Grade against this rubric and assign a score out of {max_points}:
+1. GRADING: Grade against this rubric and assign a score out of {max_points}:
 {rubric}
+
+2. ORIGINALITY: Rate 1-10 how original and personal this writing feels (10=very original, 1=very generic/formulaic). One sentence only.
 
 Student submission:
 {text}
 
-{tone_section}{language_instruction}Respond with JSON only: {{"ai_score": int, "ai_reasoning": str, "grade": int, "feedback": str}}"""
+{tone_section}{language_instruction}Respond with JSON only — put grade and feedback first:
+{{"grade": int, "feedback": str, "ai_score": int, "ai_reasoning": str}}"""
 
 
 async def grade_assignment_stream(token: str, user_id: str, course_id: str, assignment_id: str, rubric: str, max_points: int, student_user_id: str | None = None, tone_instructions: str | None = None):
@@ -287,7 +289,7 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                 response = client.chat.completions.create(
                     model=ai_model,
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=1000,
+                    max_tokens=3000,
                 )
                 if not response.choices:
                     raise ValueError("AI returned no choices in response")
