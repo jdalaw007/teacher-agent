@@ -298,15 +298,19 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
 
                 # Retry if grade=0 and no feedback — AI likely refused or mis-parsed rubric
                 if result.get("grade", 0) == 0 and not (result.get("feedback") or "").strip():
+                    orig_ai_score = result.get("ai_score")
+                    orig_ai_reasoning = result.get("ai_reasoning", "")
                     retry2_prompt = (
-                        f"Grade this student essay out of {max_points} points.\n\n"
-                        f"Rubric: {rubric}\n\n"
+                        f"You are a teacher grading a student essay. The essay is below.\n\n"
+                        f"Rubric:\n{rubric}\n\n"
                         f"Essay:\n{clean_text[:3000]}\n\n"
+                        f"Instructions: Assign a grade between 1 and {max_points}. "
+                        f"Do not return 0 unless the essay is completely blank. "
+                        f"Write 2-3 sentences of constructive feedback. "
                         f"{language_instruction}"
-                        f"The student submitted real work — assign a fair grade (not 0 unless the submission is truly blank) "
-                        f"and write 2-3 sentences of feedback.\n"
-                        f"Return JSON only: {{\"ai_score\": 5, \"ai_reasoning\": \"n/a\", "
-                        f"\"grade\": <int>, \"feedback\": \"<string>\"}}"
+                        f"Reply with JSON only, exactly this format:\n"
+                        f"{{\"grade\": 75, \"feedback\": \"example feedback here\"}}\n"
+                        f"Replace 75 with your actual grade and fill in real feedback."
                     )
                     retry2 = client.chat.completions.create(
                         model=ai_model,
@@ -317,9 +321,19 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                     if raw2 and "{" in raw2 and "}" in raw2:
                         raw2 = raw2[raw2.find("{"):raw2.rfind("}") + 1]
                         try:
-                            result = json.loads(raw2)
+                            retry_result = json.loads(raw2)
+                            # Merge: keep original ai_score/reasoning, take new grade/feedback
+                            result["grade"] = retry_result.get("grade", result.get("grade", 0))
+                            result["feedback"] = retry_result.get("feedback", result.get("feedback", ""))
+                            if orig_ai_score is not None:
+                                result["ai_score"] = orig_ai_score
+                                result["ai_reasoning"] = orig_ai_reasoning
                         except Exception:
                             pass  # keep original result if retry also fails
+
+                # Coerce nulls — Gemini sometimes returns null for numeric fields
+                ai_score_val = int(result.get("ai_score") or 0)
+                grade_val = int(result.get("grade") or 0)
 
                 flagged = name in plagiarism_students
                 uid_sid = sub_ids.get(name, ("", ""))
@@ -329,11 +343,11 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                     assignment_id=assignment_id,
                     assignment_title=assignment_title,
                     student_name=name,
-                    ai_score=result.get("ai_score", 0),
-                    ai_reasoning=result.get("ai_reasoning", ""),
-                    grade=result.get("grade", 0),
+                    ai_score=ai_score_val,
+                    ai_reasoning=result.get("ai_reasoning") or "",
+                    grade=grade_val,
                     max_points=max_points,
-                    feedback=result.get("feedback", ""),
+                    feedback=result.get("feedback") or "",
                     plagiarism_flagged=flagged,
                     student_user_id=uid_sid[0],
                     submission_id=uid_sid[1],
@@ -341,11 +355,11 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                 yield sse({
                     "type": "student_result",
                     "student_name": name,
-                    "ai_score": result.get("ai_score", 0),
-                    "ai_reasoning": result.get("ai_reasoning", ""),
-                    "grade": result.get("grade", 0),
+                    "ai_score": ai_score_val,
+                    "ai_reasoning": result.get("ai_reasoning") or "",
+                    "grade": grade_val,
                     "max_points": max_points,
-                    "feedback": result.get("feedback", ""),
+                    "feedback": result.get("feedback") or "",
                     "plagiarism_flagged": flagged,
                 })
             except Exception as e:
