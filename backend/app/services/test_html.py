@@ -79,7 +79,8 @@ function submitTest() {
     if (el.type === 'radio') {
       if (el.checked) answers[el.name] = el.value;
     } else {
-      answers[el.name] = el.value.trim();
+      const hint = el.dataset.hint || '';
+      answers[el.name] = hint + el.value.trim();
     }
   });
 
@@ -131,7 +132,7 @@ def _render_question(q: dict, block_num: int) -> str:
 
     elif qtype == "fill_in_blank_hint":
         hint = html_lib.escape(q.get("hint_letter", ""))
-        inp = f'<span class="hint">{hint}</span><input class="ans ans-sm" spellcheck="false" autocorrect="off" name="{q_key}">'
+        inp = f'<span class="hint">{hint}</span><input class="ans ans-sm" data-hint="{hint}" spellcheck="false" autocorrect="off" name="{q_key}">'
         # text already has ________ without hint letter
         filled = text.replace("________", inp)
         return f'<div class="q">{q["num"]}. {filled}</div>'

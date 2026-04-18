@@ -55,12 +55,14 @@ Schema:
 }
 
 Question type rules:
-- fill_in_blank: text has ________ with no leading hint letter. Use for most gaps.
+- fill_in_blank: text has ________ with no leading hint letter. Use for most gaps including grammar transformation exercises (e.g. "(you / be) → ________").
 - fill_in_blank_hint: text has a letter immediately before ________ (like "f________"). Extract hint_letter.
 - binary_choice: question ends with two options separated by " / " (like "prediction / plan"). Remove the options from text, put them in choice_values.
 - multiple_choice: a numbered gap in a dialogue/paragraph, followed by "a X  b Y  c Z" options. Set text to empty string, put options as [["a","X"],["b","Y"],["c","Z"]].
-- short_answer: reading comprehension question requiring a complete sentence answer.
-- essay: free writing task (says "Write X-Y words" or "Write a...").
+- short_answer: reading comprehension question that asks "What/When/Where/Who/Why" and requires a full sentence answer.
+- essay: ONLY for genuinely free writing tasks where the student writes a full paragraph (60+ words). Clues: "Write X–Y words", "Write a review/email/paragraph/essay". Do NOT use essay for grammar exercises or sentence transformation tasks.
+
+IMPORTANT: Grammar exercises that say "Write questions/sentences with be going to" or similar are fill_in_blank — each numbered item gets its own question with type fill_in_blank.
 
 For fill_in_blank_hint: clean the text so it shows the sentence without the hint letter (the hint_letter field carries it separately).
 
