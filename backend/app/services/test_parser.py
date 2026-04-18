@@ -148,11 +148,10 @@ def parse_test(file_bytes: bytes, filename: str, ai_client, model: str) -> dict:
     )
     raw = response.choices[0].message.content.strip()
     result = _clean_and_parse(raw)
-    total_questions = sum(len(s.get("questions", [])) for s in result.get("sections", []))
-    if total_questions < 3:
+    if not result.get("sections") or not any(s.get("questions") for s in result.get("sections", [])):
         raise ValueError(
-            f"AI only parsed {total_questions} question(s) — response may have been truncated. "
-            f"Try uploading with OpenAI instead, or split the test into smaller sections."
+            "AI returned no questions — response may have been truncated. "
+            "Try uploading with OpenAI instead, or split the test into smaller sections."
         )
     return result
 
