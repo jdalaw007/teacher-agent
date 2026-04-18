@@ -87,16 +87,44 @@ ANSWER KEY TEXT:
 """
 
 
+def _extract_first_json_object(text: str) -> str:
+    """Extract the first balanced {...} block, correctly handling } inside strings."""
+    depth = 0
+    in_string = False
+    escape = False
+    start = None
+    for i, ch in enumerate(text):
+        if escape:
+            escape = False
+            continue
+        if ch == '\\' and in_string:
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == '{':
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0 and start is not None:
+                return text[start:i + 1]
+    return ""
+
+
 def _clean_and_parse(raw: str) -> dict:
     """Strip fences, extract outermost JSON object, repair and parse."""
     raw = raw.strip()
-    raw = re.sub(r"^```(?:json)?\s*", "", raw)
-    raw = re.sub(r"\s*```$", "", raw)
-    # Extract outermost { ... } in case model added extra text
-    start = raw.find("{")
-    end = raw.rfind("}")
-    if start != -1 and end != -1:
-        raw = raw[start:end + 1]
+    raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
+    raw = re.sub(r"\s*```\s*$", "", raw, flags=re.MULTILINE)
+    raw = raw.strip()
+    extracted = _extract_first_json_object(raw)
+    if extracted:
+        raw = extracted
     # Try standard parse first, fall back to json_repair
     try:
         return json.loads(raw)

@@ -20,6 +20,7 @@ export default function TestsPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState("");
   const [uploadErr, setUploadErr] = useState("");
+  const [uploadedTestId, setUploadedTestId] = useState("");
   const [copiedId, setCopiedId] = useState("");
   const testFileRef = useRef<HTMLInputElement>(null);
   const keyFileRef = useRef<HTMLInputElement>(null);
@@ -68,6 +69,7 @@ export default function TestsPage() {
       }
       const data = await r.json();
       setUploadMsg(`"${data.title}" uploaded successfully.`);
+      setUploadedTestId(data.test_id);
       if (testFileRef.current) testFileRef.current.value = "";
       if (keyFileRef.current) keyFileRef.current.value = "";
       loadTests();
@@ -124,7 +126,14 @@ export default function TestsPage() {
         </div>
 
         {uploadErr && <div style={s.errMsg}>{uploadErr}</div>}
-        {uploadMsg && <div style={s.okMsg}>{uploadMsg}</div>}
+        {uploadMsg && (
+          <div style={s.okMsg}>
+            {uploadMsg}
+            {uploadedTestId && (
+              <> &nbsp;·&nbsp; <button style={s.inlineLink} onClick={() => router.push(`/tests/${uploadedTestId}`)}>View results</button></>
+            )}
+          </div>
+        )}
 
         <button style={uploading ? s.btnDisabled : s.btn} onClick={handleUpload} disabled={uploading}>
           {uploading ? "Uploading & parsing..." : "Upload test"}
@@ -136,26 +145,6 @@ export default function TestsPage() {
         <div style={s.listHeader}>
           <h2 style={s.cardTitle}>Your tests</h2>
           <button style={s.btnSmall} onClick={loadTests}>Refresh</button>
-        </div>
-
-        {/* Pinned unit7 entry */}
-        <div style={s.testRow}>
-          <div style={s.testInfo}>
-            <div style={s.testTitle}>Unit 7 Standard Test A</div>
-            <div style={s.testMeta}>Hardcoded test &nbsp;·&nbsp; <a href="/test-results" style={s.link}>View results</a></div>
-          </div>
-          <div style={s.testActions}>
-            <div style={s.urlRow}>
-              <code style={s.urlCode}>{RAILWAY_URL}/test/unit7</code>
-              <button style={s.copyBtn} onClick={() => {
-                navigator.clipboard.writeText(`${RAILWAY_URL}/test/unit7`);
-                setCopiedId("unit7");
-                setTimeout(() => setCopiedId(""), 2000);
-              }}>
-                {copiedId === "unit7" ? "Copied!" : "Copy URL"}
-              </button>
-            </div>
-          </div>
         </div>
 
         {loading && <p style={{ color: "#888", fontSize: 14, margin: "16px 0" }}>Loading...</p>}
@@ -211,6 +200,7 @@ const s: Record<string, React.CSSProperties> = {
   fileInput: { fontSize: 13, padding: "6px 0" },
   errMsg: { color: "#c00", fontSize: 13, marginBottom: 10 },
   okMsg: { color: "#1a7a30", fontSize: 13, marginBottom: 10 },
+  inlineLink: { background: "none", border: "none", color: "#0066cc", cursor: "pointer", fontSize: 13, textDecoration: "underline", padding: 0 },
   btn: { background: "#0066cc", color: "white", border: "none", padding: "10px 28px", borderRadius: 6, cursor: "pointer", fontWeight: "bold", fontSize: 14 },
   btnDisabled: { background: "#999", color: "white", border: "none", padding: "10px 28px", borderRadius: 6, cursor: "not-allowed", fontWeight: "bold", fontSize: 14 },
   btnSmall: { background: "none", border: "1px solid #ccc", padding: "5px 14px", borderRadius: 5, cursor: "pointer", fontSize: 13, color: "#555" },

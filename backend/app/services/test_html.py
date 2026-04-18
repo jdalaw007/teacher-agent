@@ -113,7 +113,7 @@ def _q_key(block_num: int, q_num: int) -> str:
 
 
 def _render_question(q: dict, block_num: int) -> str:
-    qtype = q["type"]
+    qtype = q.get("type", "")
     q_key = _q_key(block_num, q["num"])
     text = html_lib.escape(q.get("text", ""))
 
