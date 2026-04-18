@@ -149,8 +149,13 @@ GRADE_PROMPT = """You are grading a student assignment. Do the following:
 Student submission:
 {text}
 
-{tone_section}{language_instruction}Respond with JSON only — in this exact field order:
-{{"grade": int, "ai_score": int, "ai_reasoning": str, "feedback": str}}"""
+{tone_section}{language_instruction}Respond with JSON only, using exactly these keys:
+- "grade": your score out of {max_points} (integer)
+- "ai_score": your originality rating 1-10 (integer, NOT the grade)
+- "ai_reasoning": one sentence explaining the originality rating
+- "feedback": your written feedback for the student
+
+Example format: {{"grade": 75, "ai_score": 7, "ai_reasoning": "Shows personal voice.", "feedback": "Good work on..."}}"""
 
 
 async def grade_assignment_stream(token: str, user_id: str, course_id: str, assignment_id: str, rubric: str, max_points: int, student_user_id: str | None = None, tone_instructions: str | None = None):
@@ -332,8 +337,8 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                         raise ValueError(f"AI returned unparseable response: {raw[:200]!r}")
                     result = json.loads(repaired)
 
-                # Retry if grade=0 and no feedback — AI likely refused or mis-parsed rubric
-                if result.get("grade", 0) == 0 and not (result.get("feedback") or "").strip():
+                # Retry if no feedback (or grade=0) — AI truncated or mis-parsed
+                if not (result.get("feedback") or "").strip():
                     orig_ai_score = result.get("ai_score")
                     orig_ai_reasoning = result.get("ai_reasoning", "")
                     retry2_prompt = (
