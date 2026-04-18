@@ -146,7 +146,6 @@ GRADE_PROMPT = """You are grading a student assignment. Do the following:
 
 2. ORIGINALITY: Rate 1-10 how original and personal this writing feels (10=very original, 1=very generic/formulaic). One sentence only.
 
-Keep your feedback concise: 3-5 sentences maximum. Do not use headers or bullet points.
 
 Student submission:
 {text}
