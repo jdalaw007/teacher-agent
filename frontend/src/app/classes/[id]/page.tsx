@@ -502,8 +502,8 @@ export default function ClassPage() {
   }
 
   const aiScoreColor = (score: number) => {
-    if (score <= 3) return '#34a853'
-    if (score <= 6) return '#f9ab00'
+    if (score >= 7) return '#34a853'
+    if (score >= 4) return '#f9ab00'
     return '#ea4335'
   }
 
@@ -824,7 +824,7 @@ export default function ClassPage() {
                                     </div>
                                   ) : (
                                     <span style={{ ...styles.aiScoreBadge, background: aiScoreColor(r.ai_score) }}
-                                      title={r.ai_reasoning}>
+                                      title={`Originality score (10 = very original, 1 = generic/formulaic)\n\n${r.ai_reasoning}`}>
                                       {r.ai_score}/10
                                     </span>
                                   )}
