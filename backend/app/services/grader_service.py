@@ -257,7 +257,7 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                 response = client.chat.completions.create(
                     model=ai_model,
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=600,
+                    max_tokens=1000,
                 )
                 if not response.choices:
                     raise ValueError("AI returned no choices in response")
@@ -285,13 +285,16 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                     if not raw:
                         raise ValueError(f"AI returned empty response (finish_reason={finish}/{finish2})")
 
-                if "{" in raw:
+                if "{" in raw and "}" in raw:
                     raw = raw[raw.find("{"):raw.rfind("}") + 1]
                 try:
                     result = json.loads(raw)
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, ValueError):
                     from json_repair import repair_json
-                    result = json.loads(repair_json(raw))
+                    repaired = repair_json(raw)
+                    if not repaired or repaired in ('""', "null", "{}"):
+                        raise ValueError(f"AI returned unparseable response: {raw[:200]!r}")
+                    result = json.loads(repaired)
                 flagged = name in plagiarism_students
                 uid_sid = sub_ids.get(name, ("", ""))
                 _save_result(
