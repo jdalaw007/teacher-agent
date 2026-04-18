@@ -1,10 +1,40 @@
 import json
+import re
 import difflib
 from app.services.classroom import ClassroomService
 from app.services.pseudonymize import scrub_submission_text
 from app.services.drive import DriveService
 from app.services.profile import ProfileService, get_ai_client
 from app.services.database import get_db
+
+
+def _extract_first_json_object(text: str) -> str:
+    """Extract the first balanced {...} block, correctly handling } inside strings."""
+    depth = 0
+    in_string = False
+    escape = False
+    start = None
+    for i, ch in enumerate(text):
+        if escape:
+            escape = False
+            continue
+        if ch == '\\' and in_string:
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == '{':
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0 and start is not None:
+                return text[start:i + 1]
+    return ""
 
 
 def _extract_text_from_submission(submission: dict, token: str) -> str:
@@ -285,9 +315,13 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                     if not raw:
                         raise ValueError(f"AI returned empty response (finish_reason={finish}/{finish2})")
 
-                raw_debug = raw[:400]  # capture before slicing
-                if "{" in raw and "}" in raw:
-                    raw = raw[raw.find("{"):raw.rfind("}") + 1]
+                raw_debug = raw[:400]  # capture before extraction
+                # Strip markdown code fences (Gemini wraps JSON in ```json ... ```)
+                raw = re.sub(r'^```(?:json)?\s*', '', raw, flags=re.MULTILINE)
+                raw = re.sub(r'\s*```\s*$', '', raw, flags=re.MULTILINE)
+                raw = raw.strip()
+                # Extract first balanced {...} block — handles } inside string values
+                raw = _extract_first_json_object(raw) or raw
                 try:
                     result = json.loads(raw)
                 except (json.JSONDecodeError, ValueError):
