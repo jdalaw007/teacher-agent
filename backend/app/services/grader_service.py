@@ -285,6 +285,7 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                     if not raw:
                         raise ValueError(f"AI returned empty response (finish_reason={finish}/{finish2})")
 
+                raw_debug = raw[:400]  # capture before slicing
                 if "{" in raw and "}" in raw:
                     raw = raw[raw.find("{"):raw.rfind("}") + 1]
                 try:
@@ -295,6 +296,7 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                     if not repaired or repaired in ('""', "null", "{}"):
                         raise ValueError(f"AI returned unparseable response: {raw[:200]!r}")
                     result = json.loads(repaired)
+                result["_raw_debug"] = raw_debug
 
                 # Retry if grade=0 and no feedback — AI likely refused or mis-parsed rubric
                 if result.get("grade", 0) == 0 and not (result.get("feedback") or "").strip():
@@ -361,6 +363,7 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                     "max_points": max_points,
                     "feedback": result.get("feedback") or "",
                     "plagiarism_flagged": flagged,
+                    "debug_raw": result.get("_raw_debug", ""),
                 })
             except Exception as e:
                 yield sse({"type": "student_result", "student_name": name, "no_text": True,

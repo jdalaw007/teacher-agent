@@ -854,6 +854,11 @@ export default function ClassPage() {
                                     </button>
                                   )}
                                 </div>
+                                {r.debug_raw && (
+                                  <div style={{ color: '#999', fontSize: '0.68rem', marginTop: 4, wordBreak: 'break-all' }}>
+                                    <strong>raw:</strong> {r.debug_raw}
+                                  </div>
+                                )}
                               </td>
                             </tr>
                           ))}
