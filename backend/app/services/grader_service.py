@@ -295,6 +295,32 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                     if not repaired or repaired in ('""', "null", "{}"):
                         raise ValueError(f"AI returned unparseable response: {raw[:200]!r}")
                     result = json.loads(repaired)
+
+                # Retry if grade=0 and no feedback — AI likely refused or mis-parsed rubric
+                if result.get("grade", 0) == 0 and not (result.get("feedback") or "").strip():
+                    retry2_prompt = (
+                        f"Grade this student essay out of {max_points} points.\n\n"
+                        f"Rubric: {rubric}\n\n"
+                        f"Essay:\n{clean_text[:3000]}\n\n"
+                        f"{language_instruction}"
+                        f"The student submitted real work — assign a fair grade (not 0 unless the submission is truly blank) "
+                        f"and write 2-3 sentences of feedback.\n"
+                        f"Return JSON only: {{\"ai_score\": 5, \"ai_reasoning\": \"n/a\", "
+                        f"\"grade\": <int>, \"feedback\": \"<string>\"}}"
+                    )
+                    retry2 = client.chat.completions.create(
+                        model=ai_model,
+                        messages=[{"role": "user", "content": retry2_prompt}],
+                        max_tokens=600,
+                    )
+                    raw2 = (retry2.choices[0].message.content or "").strip()
+                    if raw2 and "{" in raw2 and "}" in raw2:
+                        raw2 = raw2[raw2.find("{"):raw2.rfind("}") + 1]
+                        try:
+                            result = json.loads(raw2)
+                        except Exception:
+                            pass  # keep original result if retry also fails
+
                 flagged = name in plagiarism_students
                 uid_sid = sub_ids.get(name, ("", ""))
                 _save_result(
