@@ -149,8 +149,8 @@ GRADE_PROMPT = """You are grading a student assignment. Do the following:
 Student submission:
 {text}
 
-{tone_section}{language_instruction}Respond with JSON only — put grade and feedback first:
-{{"grade": int, "feedback": str, "ai_score": int, "ai_reasoning": str}}"""
+{tone_section}{language_instruction}Respond with JSON only — in this exact field order:
+{{"grade": int, "ai_score": int, "ai_reasoning": str, "feedback": str}}"""
 
 
 async def grade_assignment_stream(token: str, user_id: str, course_id: str, assignment_id: str, rubric: str, max_points: int, student_user_id: str | None = None, tone_instructions: str | None = None):
