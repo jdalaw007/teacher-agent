@@ -93,6 +93,8 @@ export default function ClassPage() {
   const [graderStudentFilter, setGraderStudentFilter] = useState<{ userId: string; name: string } | null>(null)
   const [pushingGrades, setPushingGrades] = useState(false)
   const [pushGradeResult, setPushGradeResult] = useState<string | null>(null)
+  const [graderDone, setGraderDone] = useState(false)
+  const [graderError, setGraderError] = useState('')
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -391,6 +393,8 @@ export default function ClassPage() {
     if (!graderAssignment) return
     const token = localStorage.getItem('token')
     setGraderRunning(true)
+    setGraderDone(false)
+    setGraderError('')
     setGraderResults([])
     setGraderPlagiarism([])
     setGraderStatus('Starting...')
@@ -408,8 +412,9 @@ export default function ClassPage() {
         }),
       })
       if (!res.ok || !res.body) {
-        setGraderStatus('Failed to start grading.')
+        setGraderError('Failed to connect to grading service. Check your internet connection and try again.')
         setGraderRunning(false)
+        setGraderDone(true)
         return
       }
       const reader = res.body.getReader()
@@ -429,14 +434,15 @@ export default function ClassPage() {
             else if (event.type === 'plagiarism') setGraderPlagiarism(event.flags)
             else if (event.type === 'rubric_generated') setGraderRubric(event.rubric)
             else if (event.type === 'student_result') setGraderResults(prev => [...prev, event])
-            else if (event.type === 'done') setGraderRunning(false)
-            else if (event.type === 'error') { setGraderStatus(`Error: ${event.message}`); setGraderRunning(false) }
+            else if (event.type === 'done') { setGraderRunning(false); setGraderDone(true) }
+            else if (event.type === 'error') { setGraderError(event.message); setGraderRunning(false); setGraderDone(true) }
           } catch { /* ignore parse errors */ }
         }
       }
     } catch {
-      setGraderStatus('Connection error.')
+      setGraderError('Connection error. The grading service may be unavailable.')
       setGraderRunning(false)
+      setGraderDone(true)
     }
   }
 
@@ -704,6 +710,8 @@ export default function ClassPage() {
             setGraderResults([])
             setGraderPlagiarism([])
             setGraderRunning(false)
+            setGraderDone(false)
+            setGraderError('')
             setGraderStatus('')
           }}
           onGradeStudent={(assignment, userId, userName) => {
@@ -713,6 +721,8 @@ export default function ClassPage() {
             setGraderResults([])
             setGraderPlagiarism([])
             setGraderRunning(false)
+            setGraderDone(false)
+            setGraderError('')
             setGraderStatus('')
           }}
         />
@@ -728,8 +738,18 @@ export default function ClassPage() {
                 <button onClick={() => { setGraderAssignment(null); setGraderStudentFilter(null) }} style={styles.closeBtn}>×</button>
               </div>
               <div style={styles.mailModalBody}>
+                {graderError && (
+                  <div style={{ background: '#fff0f0', border: '1px solid #e44', borderRadius: 6, padding: '10px 14px', marginBottom: 14, color: '#c00', fontSize: '0.9rem' }}>
+                    <strong>Grading failed: </strong>{graderError}
+                  </div>
+                )}
                 {graderResults.length === 0 ? (
                   <>
+                    {graderDone && !graderError && (
+                      <div style={{ background: '#fff8e1', border: '1px solid #ffc107', borderRadius: 6, padding: '10px 14px', marginBottom: 14, color: '#856404', fontSize: '0.9rem' }}>
+                        Grading completed but no student submissions were found for this assignment.
+                      </div>
+                    )}
                     <div style={styles.mailSection}>
                       <label style={styles.mailLabel}>{t('rubricLabel')} <span style={{ fontWeight: 400, color: '#888', fontSize: '0.8rem' }}>{t('rubricNote')}</span></label>
                       <textarea
@@ -760,7 +780,7 @@ export default function ClassPage() {
                         min={1}
                       />
                     </div>
-                    {graderStatus && <p style={{ color: '#666', fontSize: '0.9rem', margin: 0 }}>{graderStatus}</p>}
+                    {graderStatus && !graderError && <p style={{ color: '#666', fontSize: '0.9rem', margin: 0 }}>{graderStatus}</p>}
                     <button
                       onClick={handleGradeStart}
                       disabled={graderRunning}
@@ -797,8 +817,12 @@ export default function ClassPage() {
                               <td style={styles.graderTd}>{r.student_name}</td>
                               <td style={styles.graderTd}>
                                 {r.no_submission ? <span style={{ color: '#888' }}>{t('noSubmission')}</span>
-                                  : r.no_text ? <span style={{ color: '#888', fontSize: '0.8rem' }} title={r.note}>{t('noText')}</span>
-                                  : (
+                                  : r.no_text ? (
+                                    <div>
+                                      <span style={{ color: '#888', fontSize: '0.8rem' }}>{t('noText')}</span>
+                                      {r.note && <div style={{ color: '#aaa', fontSize: '0.72rem', marginTop: 2 }}>{r.note}</div>}
+                                    </div>
+                                  ) : (
                                     <span style={{ ...styles.aiScoreBadge, background: aiScoreColor(r.ai_score) }}
                                       title={r.ai_reasoning}>
                                       {r.ai_score}/10

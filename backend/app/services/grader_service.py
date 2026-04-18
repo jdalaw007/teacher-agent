@@ -35,6 +35,20 @@ def _extract_text_from_submission(submission: dict, token: str) -> str:
             elif mime.startswith("text/"):
                 raw = drive.download_file(file_id)
                 texts.append(raw.decode("utf-8", errors="replace"))
+            elif mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                from docx import Document
+                from io import BytesIO
+                raw = drive.download_file(file_id)
+                doc = Document(BytesIO(raw))
+                texts.append("\n".join(p.text for p in doc.paragraphs if p.text.strip()))
+            elif mime == "application/pdf":
+                from pypdf import PdfReader
+                from io import BytesIO
+                raw = drive.download_file(file_id)
+                reader = PdfReader(BytesIO(raw))
+                pdf_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+                if pdf_text.strip():
+                    texts.append(pdf_text)
         except Exception:
             pass
 
@@ -193,6 +207,11 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                 sub_map[name] = text
             except Exception:
                 sub_map[name] = ""
+
+        if not sub_map:
+            yield sse({"type": "error", "message": f"No student submissions found for this assignment (found {len(submissions)} submission record(s) but none could be mapped to students). Check that the class roster is imported and students are enrolled."})
+            yield sse({"type": "done"})
+            return
 
         # Plagiarism check
         yield sse({"type": "status", "message": "Checking for plagiarism..."})
