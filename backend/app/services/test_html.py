@@ -3,6 +3,7 @@ Generate a complete HTML test page from structured test JSON.
 Produces the same look and feel as the Unit 7 hardcoded test.
 """
 import html as html_lib
+import re as _re
 
 TEST_CSS = """
 * { box-sizing: border-box; }
@@ -127,14 +128,17 @@ def _render_question(q: dict, block_num: int) -> str:
         else:
             cls = "ans ans-xl"
         inp = f'<input class="{cls}" spellcheck="false" autocorrect="off" name="{q_key}">'
-        filled = text.replace("________", inp)
+        filled = _re.sub(r'_{3,}', inp, text, count=1)
+        if filled == text:  # no blank found — append input after text
+            filled = text + ' ' + inp
         return f'<div class="q">{q["num"]}. {filled}</div>'
 
     elif qtype == "fill_in_blank_hint":
         hint = html_lib.escape(q.get("hint_letter", ""))
         inp = f'<span class="hint">{hint}</span><input class="ans ans-sm" data-hint="{hint}" spellcheck="false" autocorrect="off" name="{q_key}">'
-        # text already has ________ without hint letter
-        filled = text.replace("________", inp)
+        filled = _re.sub(r'_{3,}', inp, text, count=1)
+        if filled == text:
+            filled = text + ' ' + inp
         return f'<div class="q">{q["num"]}. {filled}</div>'
 
     elif qtype == "binary_choice":

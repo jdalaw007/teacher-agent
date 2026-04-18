@@ -55,7 +55,7 @@ Schema:
 }
 
 Question type rules:
-- fill_in_blank: text has ________ with no leading hint letter. Use for most gaps including grammar transformation exercises (e.g. "(you / be) → ________").
+- fill_in_blank: text has ________ with no leading hint letter. Use for most gaps including grammar transformation exercises (e.g. "(you / be) → ________"). Always use exactly 8 underscores (________) as the blank placeholder in the text field.
 - fill_in_blank_hint: text has a letter immediately before ________ (like "f________"). Extract hint_letter.
 - binary_choice: question ends with two options separated by " / " (like "prediction / plan"). Remove the options from text, put them in choice_values.
 - multiple_choice: a numbered gap in a dialogue/paragraph, followed by "a X  b Y  c Z" options. Set text to empty string, put options as [["a","X"],["b","Y"],["c","Z"]].
