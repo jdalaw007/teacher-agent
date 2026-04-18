@@ -176,6 +176,10 @@ def _render_question(q: dict, block_num: int) -> str:
         ta = f'<textarea class="writing-box" name="{q_key}" spellcheck="false" autocorrect="off" autocomplete="off" data-gramm="false" placeholder="Write your answer here..."></textarea>'
         return f'<div class="q">{ta}</div>'
 
+    elif qtype == "show_work":
+        ta = f'<textarea class="writing-box" name="{q_key}" spellcheck="false" autocorrect="off" autocomplete="off" data-gramm="false" placeholder="Show your working here..."></textarea>'
+        return f'<div class="q">{q["num"]}. {text}<br>{ta}</div>'
+
     return f'<div class="q">{q["num"]}. {text}</div>'
 
 

@@ -44,7 +44,7 @@ Schema:
         {
           "num": 1,
           "text": "string",
-          "type": "fill_in_blank | fill_in_blank_hint | binary_choice | multiple_choice | short_answer | essay",
+          "type": "fill_in_blank | fill_in_blank_hint | binary_choice | multiple_choice | short_answer | essay | show_work",
           "hint_letter": "f" or null,
           "options": [["a", "have"], ["b", "want"], ["c", "like"]] or null,
           "choice_values": ["prediction", "plan"] or null
@@ -61,6 +61,7 @@ Question type rules:
 - multiple_choice: a numbered gap in a dialogue/paragraph, followed by "a X  b Y  c Z" options. Set text to empty string, put options as [["a","X"],["b","Y"],["c","Z"]].
 - short_answer: reading comprehension question that asks "What/When/Where/Who/Why" and requires a full sentence answer.
 - essay: ONLY for genuinely free writing tasks where the student writes a full paragraph (60+ words). Clues: "Write X–Y words", "Write a review/email/paragraph/essay". Do NOT use essay for grammar exercises or sentence transformation tasks.
+- show_work: math or problem-solving questions where the student must show their working/solution steps. Use for equations, calculations, proofs, or any question that says "solve", "calculate", "show your work". The text field contains the full problem.
 
 IMPORTANT: Grammar exercises that say "Write questions/sentences with be going to" or similar are fill_in_blank — each numbered item gets its own question with type fill_in_blank.
 
