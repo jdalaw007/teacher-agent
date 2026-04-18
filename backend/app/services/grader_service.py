@@ -146,6 +146,8 @@ GRADE_PROMPT = """You are grading a student assignment. Do the following:
 
 2. ORIGINALITY: Rate 1-10 how original and personal this writing feels (10=very original, 1=very generic/formulaic). One sentence only.
 
+Keep your feedback concise: 3-5 sentences maximum. Do not use headers or bullet points.
+
 Student submission:
 {text}
 
@@ -294,7 +296,7 @@ async def grade_assignment_stream(token: str, user_id: str, course_id: str, assi
                 response = client.chat.completions.create(
                     model=ai_model,
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=3000,
+                    max_tokens=8000,
                 )
                 if not response.choices:
                     raise ValueError("AI returned no choices in response")
