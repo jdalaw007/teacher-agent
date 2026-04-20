@@ -475,6 +475,29 @@ async def list_tests(request: Request):
 # Rubric save + AI essay grading — also before /{test_id} catch-all
 # ---------------------------------------------------------------------------
 
+class RenameRequest(BaseModel):
+    title: str
+
+
+@router.patch("/{test_id}/title")
+async def rename_test(test_id: str, body: RenameRequest, request: Request):
+    """Rename a test (teacher only)."""
+    user_id = _require_auth(request)
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Title cannot be empty")
+    db = get_db()
+    try:
+        row = db.execute("SELECT teacher_user_id FROM tests WHERE id = ?", (test_id,)).fetchone()
+        if not row or row["teacher_user_id"] != user_id:
+            raise HTTPException(status_code=404, detail="Not found")
+        db.execute("UPDATE tests SET title = ? WHERE id = ?", (title, test_id))
+        db.commit()
+        return {"ok": True, "title": title}
+    finally:
+        db.close()
+
+
 class RubricRequest(BaseModel):
     rubric: str
 

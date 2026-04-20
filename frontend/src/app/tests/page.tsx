@@ -22,6 +22,8 @@ export default function TestsPage() {
   const [uploadErr, setUploadErr] = useState("");
   const [uploadedTestId, setUploadedTestId] = useState("");
   const [copiedId, setCopiedId] = useState("");
+  const [renamingId, setRenamingId] = useState("");
+  const [renameValue, setRenameValue] = useState("");
   const testFileRef = useRef<HTMLInputElement>(null);
   const keyFileRef = useRef<HTMLInputElement>(null);
 
@@ -96,6 +98,30 @@ export default function TestsPage() {
     }
   }
 
+  function startRename(test: TestEntry) {
+    setRenamingId(test.id);
+    setRenameValue(test.title);
+  }
+
+  async function commitRename(testId: string) {
+    const title = renameValue.trim();
+    if (!title) { setRenamingId(""); return; }
+    const token = getToken();
+    try {
+      const r = await fetch(`${API_URL}/test/${testId}/title`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      if (!r.ok) throw new Error(`${r.status}`);
+      setTests(prev => prev.map(t => t.id === testId ? { ...t, title } : t));
+    } catch (e: unknown) {
+      alert(`Could not rename: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setRenamingId("");
+    }
+  }
+
   function copyUrl(testId: string) {
     const url = `${RAILWAY_URL}/test/${testId}`;
     navigator.clipboard.writeText(url).then(() => {
@@ -156,7 +182,20 @@ export default function TestsPage() {
         {tests.map(test => (
           <div key={test.id} style={s.testRow}>
             <div style={s.testInfo}>
-              <div style={s.testTitle}>{test.title}</div>
+              {renamingId === test.id ? (
+                <input
+                  style={s.renameInput}
+                  value={renameValue}
+                  autoFocus
+                  onChange={e => setRenameValue(e.target.value)}
+                  onBlur={() => commitRename(test.id)}
+                  onKeyDown={e => { if (e.key === "Enter") commitRename(test.id); if (e.key === "Escape") setRenamingId(""); }}
+                />
+              ) : (
+                <div style={s.testTitle} title="Click to rename" onClick={() => startRename(test)}>
+                  {test.title} <span style={s.editHint}>✎</span>
+                </div>
+              )}
               <div style={s.testMeta}>
                 {new Date(test.created_at + "Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                 &nbsp;·&nbsp; {test.submission_count} submission{test.submission_count !== 1 ? "s" : ""}
@@ -207,7 +246,9 @@ const s: Record<string, React.CSSProperties> = {
   listHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
   testRow: { borderTop: "1px solid #eee", paddingTop: 14, paddingBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" },
   testInfo: { flex: "0 0 auto", minWidth: 200 },
-  testTitle: { fontWeight: "bold", fontSize: 15, color: "#111", marginBottom: 3 },
+  testTitle: { fontWeight: "bold", fontSize: 15, color: "#111", marginBottom: 3, cursor: "pointer" },
+  editHint: { fontSize: 12, color: "#aaa", marginLeft: 4 },
+  renameInput: { fontWeight: "bold", fontSize: 15, color: "#111", border: "1px solid #0066cc", borderRadius: 4, padding: "2px 6px", marginBottom: 3, width: "100%", outline: "none" },
   testMeta: { fontSize: 12, color: "#888" },
   testActions: { display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" },
   urlRow: { display: "flex", alignItems: "center", gap: 8 },
