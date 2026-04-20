@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
-import json, uuid
+import json, uuid, os
 from datetime import datetime
 from app.services.database import get_db
 from app.services.token_store import get_user_id_from_token
@@ -440,7 +440,7 @@ async def upload_test(
 
     # Save to DB
     test_id = uuid.uuid4().hex[:8]
-    title = test_data.get("title", "Untitled Test")
+    title = test_data.get("title") or os.path.splitext(test_file.filename or "Untitled Test")[0]
     db = get_db()
     try:
         db.execute(
