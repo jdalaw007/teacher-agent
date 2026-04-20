@@ -15,8 +15,18 @@ def extract_text(file_bytes: bytes, filename: str) -> str:
     if fname.endswith(".docx") or fname.endswith(".doc"):
         import io
         from docx import Document
-        doc = Document(io.BytesIO(file_bytes))
-        return "\n".join(p.text for p in doc.paragraphs)
+        try:
+            doc = Document(io.BytesIO(file_bytes))
+            return "\n".join(p.text for p in doc.paragraphs)
+        except Exception:
+            # Old .doc binary format or corrupted file — try plain text fallback
+            try:
+                return file_bytes.decode("utf-8", errors="replace")
+            except Exception:
+                raise ValueError(
+                    "Could not read this file. If it is an old .doc file, please save it as "
+                    ".docx (File > Save As in Word) or copy the text into a .txt file and upload that."
+                )
     raise ValueError(f"Unsupported file type: {filename}. Use .txt or .docx")
 
 
