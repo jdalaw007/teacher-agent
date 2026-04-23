@@ -416,6 +416,16 @@ async def upload_test(
     answer_key_file: Optional[UploadFile] = File(None),
 ):
     """Parse a test doc (txt/docx) with AI and save it. Returns {test_id, title, url}."""
+    import traceback as _tb
+    try:
+        return await _upload_test_inner(request, test_file, answer_key_file)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Upload error: {e} | {_tb.format_exc()[-600:]}")
+
+
+async def _upload_test_inner(request, test_file, answer_key_file):
     user_id = _require_auth(request)
 
     ai_client, model = get_ai_client(user_id)
@@ -423,7 +433,6 @@ async def upload_test(
         raise HTTPException(status_code=400, detail="No AI API key configured. Add one in Settings.")
 
     # Parse test document
-    import traceback as _tb
     file_bytes = await test_file.read()
     try:
         test_data = parse_test(file_bytes, test_file.filename or "test.txt", ai_client, model)
