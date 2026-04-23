@@ -65,7 +65,9 @@ Question type rules:
 - fill_in_blank: text has ________ with no leading hint letter. Use for most gaps including grammar transformation exercises (e.g. "(you / be) → ________"). Always use exactly 8 underscores (________) as the blank placeholder in the text field.
 - fill_in_blank_hint: text has a letter immediately before ________ (like "f________"). Extract hint_letter.
 - binary_choice: question ends with two options separated by " / " (like "prediction / plan"). Remove the options from text, put them in choice_values.
-- multiple_choice: a numbered gap in a dialogue/paragraph, followed by "a X  b Y  c Z" options. Set text to empty string, put options as [["a","X"],["b","Y"],["c","Z"]].
+- multiple_choice: TWO sub-cases:
+  (a) Inline slash options: a full sentence with choices separated by " / " embedded inside it (e.g. "He has hidden / discovered / stolen some treasure."). Set text to the full sentence with the slash group replaced by "________", put options as [["a","hidden"],["b","discovered"],["c","stolen"]].
+  (b) Dialogue gap: a numbered gap [1] in a dialogue/paragraph, followed by "a X  b Y  c Z" options below. Set text to empty string, put options as [["a","X"],["b","Y"],["c","Z"]].
 - short_answer: reading comprehension question that asks "What/When/Where/Who/Why" and requires a full sentence answer.
 - essay: ONLY for genuinely free writing tasks where the student writes a full paragraph (60+ words). Clues: "Write X–Y words", "Write a review/email/paragraph/essay". Do NOT use essay for grammar exercises or sentence transformation tasks.
 - show_work: math or problem-solving questions where the student must show their working/solution steps. Use for equations, calculations, proofs, or any question that says "solve", "calculate", "show your work". The text field contains the full problem.

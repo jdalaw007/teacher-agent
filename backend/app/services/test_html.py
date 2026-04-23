@@ -166,7 +166,8 @@ def _render_question(q: dict, block_num: int) -> str:
             lb = html_lib.escape(str(label))
             radios += f'<label><input type="radio" name="{q_key}" value="{l}"> {l}) {lb}</label>'
         radios += '</div>'
-        return f'<div class="q">{q["num"]}.\n{radios}</div>'
+        q_text = f' {text}' if text else ''
+        return f'<div class="q">{q["num"]}.{q_text}\n{radios}</div>'
 
     elif qtype == "short_answer":
         inp = f'<input class="ans ans-xl" spellcheck="false" autocorrect="off" name="{q_key}" style="margin-top:5px">'
