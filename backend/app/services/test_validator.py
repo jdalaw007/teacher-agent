@@ -167,6 +167,8 @@ Common fixes:
 - If type is wrong (e.g. essay instead of fill_in_blank), correct it
 - If options are missing for multiple_choice, restore them from the original text
 - If hint_letter is missing for fill_in_blank_hint, extract it from the original text
+- For multiple_choice: the text field MUST contain ________ where the options go — NEVER include the actual option words in the text field
+- For fill_in_blank/fill_in_blank_hint: use exactly ________ (8 underscores) as the placeholder
 
 Return format: {"s1_q3": {<fixed question object>}, "s2_q1": {<fixed question object>}, ...}
 """
@@ -185,8 +187,11 @@ def fix_and_revalidate(test_data: dict, answer_key: dict, original_text: str,
         if not result.get("issues") or result.get("error"):
             return test_data, result
 
-        # Build subset of broken questions
-        broken_q_ids = {issue["q_id"] for issue in result["issues"]}
+        # Build subset of broken questions — only fix STRUCTURAL problems, not content mismatches
+        broken_q_ids = {issue["q_id"] for issue in result["issues"]
+                        if "no answer" in issue["problem"].lower()
+                        or "missing" in issue["problem"].lower()
+                        or "unreadable" in issue["problem"].lower()}
         broken_questions = {}
         q_map = {}
         for sec in test_data.get("sections", []):
@@ -194,6 +199,13 @@ def fix_and_revalidate(test_data: dict, answer_key: dict, original_text: str,
             for q in sec.get("questions", []):
                 qid = f"s{bn}_q{q['num']}"
                 q_map[qid] = (sec, q)
+                # Also flag structurally defective questions regardless of validator result
+                qtype = q.get("type", "")
+                text = (q.get("text") or "").strip()
+                if qtype == "multiple_choice" and not q.get("options"):
+                    broken_q_ids.add(qid)
+                elif qtype in ("fill_in_blank", "fill_in_blank_hint", "short_answer") and len(text) < 8:
+                    broken_q_ids.add(qid)
                 if qid in broken_q_ids:
                     broken_questions[qid] = q
 
