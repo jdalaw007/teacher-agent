@@ -423,11 +423,12 @@ async def upload_test(
         raise HTTPException(status_code=400, detail="No AI API key configured. Add one in Settings.")
 
     # Parse test document
+    import traceback as _tb
     file_bytes = await test_file.read()
     try:
         test_data = parse_test(file_bytes, test_file.filename or "test.txt", ai_client, model)
     except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Could not parse test: {e}")
+        raise HTTPException(status_code=422, detail=f"Could not parse test: {e} | {_tb.format_exc()[-400:]}")
 
     # Parse answer key if provided
     answer_key: dict = {}
@@ -436,7 +437,7 @@ async def upload_test(
         try:
             answer_key = parse_answer_key(key_bytes, answer_key_file.filename, ai_client, model)
         except Exception as e:
-            raise HTTPException(status_code=422, detail=f"Could not parse answer key: {e}")
+            raise HTTPException(status_code=422, detail=f"Could not parse answer key: {e} | {_tb.format_exc()[-400:]}")
 
     # Save to DB
     test_id = uuid.uuid4().hex[:8]
