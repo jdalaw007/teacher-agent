@@ -188,26 +188,32 @@ def fix_and_revalidate(test_data: dict, answer_key: dict, original_text: str,
             return test_data, result
 
         # Build subset of broken questions — only fix STRUCTURAL problems, not content mismatches
-        broken_q_ids = {issue["q_id"] for issue in result["issues"]
-                        if "no answer" in issue["problem"].lower()
-                        or "missing" in issue["problem"].lower()
-                        or "unreadable" in issue["problem"].lower()}
-        broken_questions = {}
+        # Only fix structural defects — never touch short_answer/show_work (open-ended content)
+        UNFIXABLE_TYPES = {"short_answer", "show_work", "essay"}
+        broken_q_ids = set()
         q_map = {}
         for sec in test_data.get("sections", []):
             bn = sec.get("block_num", 0)
             for q in sec.get("questions", []):
                 qid = f"s{bn}_q{q['num']}"
                 q_map[qid] = (sec, q)
-                # Also flag structurally defective questions regardless of validator result
                 qtype = q.get("type", "")
+                if qtype in UNFIXABLE_TYPES:
+                    continue
                 text = (q.get("text") or "").strip()
+                # Structural defect: multiple_choice missing options
                 if qtype == "multiple_choice" and not q.get("options"):
                     broken_q_ids.add(qid)
-                elif qtype in ("fill_in_blank", "fill_in_blank_hint", "short_answer") and len(text) < 8:
+                # Structural defect: fill question has essentially no text
+                elif qtype in ("fill_in_blank", "fill_in_blank_hint") and len(text) < 8:
                     broken_q_ids.add(qid)
-                if qid in broken_q_ids:
-                    broken_questions[qid] = q
+                # Validator said AI couldn't answer at all (text unreadable/missing)
+                elif any(i["q_id"] == qid and ("no answer" in i["problem"].lower()
+                         or "unreadable" in i["problem"].lower())
+                         for i in result["issues"]):
+                    broken_q_ids.add(qid)
+
+        broken_questions = {qid: q_map[qid][1] for qid in broken_q_ids if qid in q_map}
 
         if not broken_questions:
             return test_data, result
