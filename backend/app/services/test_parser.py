@@ -19,14 +19,11 @@ def extract_text(file_bytes: bytes, filename: str) -> str:
             doc = Document(io.BytesIO(file_bytes))
             return "\n".join(p.text for p in doc.paragraphs)
         except Exception:
-            # Old .doc binary format or corrupted file — try plain text fallback
-            try:
-                return file_bytes.decode("utf-8", errors="replace")
-            except Exception:
-                raise ValueError(
-                    "Could not read this file. If it is an old .doc file, please save it as "
-                    ".docx (File > Save As in Word) or copy the text into a .txt file and upload that."
-                )
+            raise ValueError(
+                "Could not read this file. It appears to be an old .doc format. "
+                "Please open it in Word and save as .docx (File > Save As), "
+                "or paste the text into a .txt file and upload that instead."
+            )
     raise ValueError(f"Unsupported file type: {filename}. Use .txt or .docx")
 
 
@@ -156,7 +153,9 @@ def parse_test(file_bytes: bytes, filename: str, ai_client, model: str) -> dict:
         messages=[{"role": "user", "content": prompt}],
         max_tokens=16000,
     )
-    raw = response.choices[0].message.content.strip()
+    raw = (response.choices[0].message.content or "").strip()
+    if not raw:
+        raise ValueError("AI returned an empty response. Try again or switch to OpenAI in Settings.")
     result = _clean_and_parse(raw)
     if not result.get("sections") or not any(s.get("questions") for s in result.get("sections", [])):
         raise ValueError(
@@ -176,5 +175,7 @@ def parse_answer_key(file_bytes: bytes, filename: str, ai_client, model: str) ->
         messages=[{"role": "user", "content": prompt}],
         max_tokens=2000,
     )
-    raw = response.choices[0].message.content.strip()
+    raw = (response.choices[0].message.content or "").strip()
+    if not raw:
+        return {}
     return _clean_and_parse(raw)
