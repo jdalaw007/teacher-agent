@@ -21,6 +21,7 @@ export default function TestsPage() {
   const [uploadMsg, setUploadMsg] = useState("");
   const [uploadErr, setUploadErr] = useState("");
   const [uploadedTestId, setUploadedTestId] = useState("");
+  const [validation, setValidation] = useState<{passed:number;failed:number;skipped:number;issues:{q_id:string;problem:string}[];error?:string} | null>(null);
   const [copiedId, setCopiedId] = useState("");
   const [renamingId, setRenamingId] = useState("");
   const [renameValue, setRenameValue] = useState("");
@@ -72,6 +73,7 @@ export default function TestsPage() {
       const data = await r.json();
       setUploadMsg(`"${data.title}" uploaded successfully.`);
       setUploadedTestId(data.test_id);
+      setValidation(data.validation || null);
       if (testFileRef.current) testFileRef.current.value = "";
       if (keyFileRef.current) keyFileRef.current.value = "";
       loadTests();
@@ -157,6 +159,21 @@ export default function TestsPage() {
             {uploadMsg}
             {uploadedTestId && (
               <> &nbsp;·&nbsp; <button style={s.inlineLink} onClick={() => router.push(`/tests/${uploadedTestId}`)}>View results</button></>
+            )}
+          </div>
+        )}
+        {validation && (
+          <div style={validation.failed === 0 ? s.valOk : s.valWarn}>
+            <strong>AI Validation:</strong>{" "}
+            {validation.error
+              ? `Validator error: ${validation.error}`
+              : `${validation.passed} questions OK, ${validation.failed} flagged, ${validation.skipped} no key`}
+            {validation.issues && validation.issues.length > 0 && (
+              <ul style={s.issueList}>
+                {validation.issues.map((issue, i) => (
+                  <li key={i}><strong>{issue.q_id}:</strong> {issue.problem}</li>
+                ))}
+              </ul>
             )}
           </div>
         )}
@@ -258,4 +275,7 @@ const s: Record<string, React.CSSProperties> = {
   resultsBtn: { background: "#28a745", color: "white", border: "none", padding: "5px 14px", borderRadius: 5, cursor: "pointer", fontSize: 13, fontWeight: "bold" },
   deleteBtn: { background: "none", border: "1px solid #e44", color: "#c00", padding: "5px 12px", borderRadius: 5, cursor: "pointer", fontSize: 13 },
   link: { color: "#0066cc", textDecoration: "underline", cursor: "pointer" },
+  valOk: { background: "#e6f9ee", border: "1px solid #28a745", borderRadius: 6, padding: "10px 14px", fontSize: 13, color: "#1a7a30", marginBottom: 10 },
+  valWarn: { background: "#fff8e1", border: "1px solid #ffc107", borderRadius: 6, padding: "10px 14px", fontSize: 13, color: "#7a5800", marginBottom: 10 },
+  issueList: { margin: "8px 0 0 16px", padding: 0, lineHeight: 1.8 },
 };

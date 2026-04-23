@@ -8,6 +8,7 @@ from app.services.database import get_db
 from app.services.token_store import get_user_id_from_token
 from app.services.test_html import generate_test_html
 from app.services.test_parser import parse_test, parse_answer_key
+from app.services.test_validator import validate_test
 from app.services.profile import get_ai_client
 
 router = APIRouter()
@@ -498,7 +499,15 @@ async def _upload_test_inner(request, test_file, answer_key_file):
     finally:
         db.close()
 
-    return {"test_id": test_id, "title": title, "url": f"/test/{test_id}"}
+    # Run AI validator if answer key is present
+    validation = None
+    if answer_key:
+        try:
+            validation = validate_test(test_data, answer_key, ai_client, model)
+        except Exception:
+            pass
+
+    return {"test_id": test_id, "title": title, "url": f"/test/{test_id}", "validation": validation}
 
 
 @router.get("/list")
