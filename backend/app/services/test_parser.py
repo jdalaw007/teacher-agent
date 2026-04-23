@@ -41,7 +41,17 @@ def extract_text(file_bytes: bytes, filename: str) -> str:
         from docx import Document
         try:
             doc = Document(io.BytesIO(file_bytes))
-            return _rejoin_split_lines("\n".join(p.text or "" for p in doc.paragraphs))
+            parts = []
+            # Regular paragraphs
+            for p in doc.paragraphs:
+                parts.append(p.text or "")
+            # Text boxes (txbxContent elements) — often contain reading passages
+            for el in doc.element.body.iter():
+                if el.tag.endswith("}txbxContent"):
+                    text = "".join(t.text or "" for t in el.iter() if t.tag.endswith("}t"))
+                    if text.strip():
+                        parts.append("\n[PASSAGE]\n" + text.strip() + "\n[/PASSAGE]")
+            return _rejoin_split_lines("\n".join(parts))
         except Exception:
             raise ValueError(
                 "Could not read this file. It appears to be an old .doc format. "
@@ -101,7 +111,9 @@ IMPORTANT: Grammar exercises that say "Write questions/sentences with be going t
 For fill_in_blank_hint: clean the text so it shows the sentence without the hint letter (the hint_letter field carries it separately).
 
 For the writing section, include Paragraph guidance in writing_guide field.
-For reading sections, include the full passage text in passage field.
+For reading sections, include the full passage text in passage field. Text marked with [PASSAGE]...[/PASSAGE] is a reading passage — place it in the passage field of the relevant reading section.
+
+For communication sections where blanks are embedded inline with numbers+hint letters (e.g. "It 1l_________ like London, but I'm not 2s_________"), treat each numbered blank as a separate fill_in_blank_hint question. Extract the hint_letter (the letter after the number), and set text to the full sentence containing that blank with the hint removed from the text (e.g. "It ________ like London"). Put the full paragraph in the dialogue field for context.
 For communication sections with dialogues, include the full dialogue in dialogue field.
 For word boxes (list of words to choose from), put them in word_box as an array.
 
