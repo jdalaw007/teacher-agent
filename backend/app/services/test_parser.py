@@ -7,17 +7,41 @@ import re
 from pathlib import Path
 
 
+def _rejoin_split_lines(text: str) -> str:
+    """Join lines where a sentence is split mid-way before slash options.
+    E.g. "There's \nenough / too much" → "There's enough / too much"
+    """
+    lines = text.split("\n")
+    result = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        # Join when next line is a standalone slash-options line (continuation of this sentence)
+        stripped = line.rstrip()
+        next_line = lines[i + 1].strip() if i + 1 < len(lines) else ""
+        # A slash-options-only line: contains " / " and has no leading number/tab (not a new question)
+        next_is_options = (" / " in next_line and not next_line[:2].strip().isdigit()
+                           and not next_line.startswith("\t"))
+        if stripped and next_is_options:
+            result.append(stripped + " " + lines[i + 1].strip())
+            i += 2
+        else:
+            result.append(line)
+            i += 1
+    return "\n".join(result)
+
+
 def extract_text(file_bytes: bytes, filename: str) -> str:
     """Extract plain text from txt or docx bytes."""
     fname = filename.lower()
     if fname.endswith(".txt"):
-        return file_bytes.decode("utf-8", errors="replace")
+        return _rejoin_split_lines(file_bytes.decode("utf-8", errors="replace"))
     if fname.endswith(".docx") or fname.endswith(".doc"):
         import io
         from docx import Document
         try:
             doc = Document(io.BytesIO(file_bytes))
-            return "\n".join(p.text or "" for p in doc.paragraphs)
+            return _rejoin_split_lines("\n".join(p.text or "" for p in doc.paragraphs))
         except Exception:
             raise ValueError(
                 "Could not read this file. It appears to be an old .doc format. "
