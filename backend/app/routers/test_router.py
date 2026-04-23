@@ -409,6 +409,39 @@ async def clear_unit7_submissions(request: Request):
 # Dynamic test management — also before /{test_id} catch-all
 # ---------------------------------------------------------------------------
 
+def _normalize_answer_key(answer_key: dict, test_data: dict) -> dict:
+    """For multiple_choice questions, ensure answer key accepts the letter the student submits.
+    If key has text ("discovered"), find matching option letter ("b") and store both.
+    """
+    q_map = {}  # q_key -> question dict
+    for sec in test_data.get("sections", []):
+        bn = sec.get("block_num", 0)
+        for q in sec.get("questions", []):
+            q_map[f"s{bn}_q{q['num']}"] = q
+
+    normalized = {}
+    for k, v in answer_key.items():
+        q = q_map.get(k)
+        if q and q.get("type") == "multiple_choice":
+            options = q.get("options") or []
+            vals = v if isinstance(v, list) else [v]
+            extra = set()
+            for ans in vals:
+                ans_lower = str(ans).lower().strip()
+                for opt in options:
+                    if isinstance(opt, (list, tuple)) and len(opt) >= 2:
+                        letter, text = str(opt[0]).lower(), str(opt[1]).lower()
+                        if ans_lower == text:
+                            extra.add(letter)
+                        elif ans_lower == letter:
+                            extra.add(text)
+            merged = list(dict.fromkeys([str(x).lower() for x in vals] + list(extra)))
+            normalized[k] = merged
+        else:
+            normalized[k] = v
+    return normalized
+
+
 @router.post("/upload")
 async def upload_test(
     request: Request,
@@ -447,6 +480,10 @@ async def _upload_test_inner(request, test_file, answer_key_file):
             answer_key = parse_answer_key(key_bytes, answer_key_file.filename, ai_client, model)
         except Exception as e:
             raise HTTPException(status_code=422, detail=f"Could not parse answer key: {e} | {_tb.format_exc()[-400:]}")
+
+    # Normalize answer key: for multiple_choice questions, if key has text answer,
+    # also accept the matching letter (student submits "b", key may have "discovered")
+    answer_key = _normalize_answer_key(answer_key, test_data)
 
     # Save to DB
     test_id = uuid.uuid4().hex[:8]
