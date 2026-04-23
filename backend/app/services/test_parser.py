@@ -17,7 +17,7 @@ def extract_text(file_bytes: bytes, filename: str) -> str:
         from docx import Document
         try:
             doc = Document(io.BytesIO(file_bytes))
-            return "\n".join(p.text for p in doc.paragraphs)
+            return "\n".join(p.text or "" for p in doc.paragraphs)
         except Exception:
             raise ValueError(
                 "Could not read this file. It appears to be an old .doc format. "
