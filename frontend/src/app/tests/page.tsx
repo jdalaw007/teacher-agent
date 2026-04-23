@@ -21,7 +21,7 @@ export default function TestsPage() {
   const [uploadMsg, setUploadMsg] = useState("");
   const [uploadErr, setUploadErr] = useState("");
   const [uploadedTestId, setUploadedTestId] = useState("");
-  const [validation, setValidation] = useState<{passed:number;failed:number;skipped:number;issues:{q_id:string;problem:string}[];error?:string} | null>(null);
+  const [validation, setValidation] = useState<{passed:number;failed:number;skipped:number;issues:{q_id:string;problem:string}[];error?:string;round?:number;fixes_applied?:string[];fix_error?:string} | null>(null);
   const [copiedId, setCopiedId] = useState("");
   const [renamingId, setRenamingId] = useState("");
   const [renameValue, setRenameValue] = useState("");
@@ -164,10 +164,14 @@ export default function TestsPage() {
         )}
         {validation && (
           <div style={validation.failed === 0 ? s.valOk : s.valWarn}>
-            <strong>AI Validation:</strong>{" "}
+            <strong>AI Validation</strong>{validation.round && validation.round > 1 ? ` (auto-fixed in ${validation.round} round${validation.round > 1 ? "s" : ""})` : ""}:{" "}
             {validation.error
               ? `Validator error: ${validation.error}`
-              : `${validation.passed} questions OK, ${validation.failed} flagged, ${validation.skipped} no key`}
+              : `${validation.passed} questions OK${validation.failed > 0 ? `, ${validation.failed} still flagged` : ", all clear"}, ${validation.skipped} without key`}
+            {validation.fixes_applied && validation.fixes_applied.length > 0 && (
+              <div style={{ fontSize: 12, marginTop: 4 }}>Auto-fixed: {validation.fixes_applied.join(", ")}</div>
+            )}
+            {validation.fix_error && <div style={{ fontSize: 12, marginTop: 4, color: "#c00" }}>{validation.fix_error}</div>}
             {validation.issues && validation.issues.length > 0 && (
               <ul style={s.issueList}>
                 {validation.issues.map((issue, i) => (

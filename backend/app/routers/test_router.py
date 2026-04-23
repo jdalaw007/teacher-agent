@@ -8,7 +8,7 @@ from app.services.database import get_db
 from app.services.token_store import get_user_id_from_token
 from app.services.test_html import generate_test_html
 from app.services.test_parser import parse_test, parse_answer_key
-from app.services.test_validator import validate_test
+from app.services.test_validator import fix_and_revalidate
 from app.services.profile import get_ai_client
 
 router = APIRouter()
@@ -469,7 +469,7 @@ async def _upload_test_inner(request, test_file, answer_key_file):
     # Parse test document
     file_bytes = await test_file.read()
     try:
-        test_data = parse_test(file_bytes, test_file.filename or "test.txt", ai_client, model)
+        test_data, original_text = parse_test(file_bytes, test_file.filename or "test.txt", ai_client, model)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Could not parse test: {e} | {_tb.format_exc()[-400:]}")
 
@@ -499,11 +499,22 @@ async def _upload_test_inner(request, test_file, answer_key_file):
     finally:
         db.close()
 
-    # Run AI validator if answer key is present
+    # Run AI validator + auto-fix loop if answer key is present
     validation = None
     if answer_key:
         try:
-            validation = validate_test(test_data, answer_key, ai_client, model)
+            test_data, validation = fix_and_revalidate(
+                test_data, answer_key, original_text, ai_client, model, max_rounds=3
+            )
+            # Re-save test_data if fixes were applied
+            if validation.get("fixes_applied"):
+                db2 = get_db()
+                try:
+                    db2.execute("UPDATE tests SET test_data = ? WHERE id = ?",
+                                (json.dumps(test_data), test_id))
+                    db2.commit()
+                finally:
+                    db2.close()
         except Exception:
             pass
 

@@ -144,3 +144,100 @@ def validate_test(test_data: dict, answer_key: dict, ai_client, model: str) -> d
             failed += 1
 
     return {"passed": passed, "failed": failed, "skipped": skipped, "issues": issues}
+
+
+FIX_PROMPT = """You are fixing errors in a parsed English language test. The test was parsed from a document into JSON, but a second AI that tried to take the test found the following problems:
+
+PROBLEMS:
+{problems}
+
+ORIGINAL TEST TEXT (source of truth):
+{original_text}
+
+CURRENT BROKEN QUESTION JSON (just the affected questions):
+{broken_json}
+
+ANSWER KEY for these questions:
+{answer_key_subset}
+
+Fix ONLY the broken questions. Return ONLY valid JSON — an object with the same structure as the broken questions, corrected. Each fixed question must have all original fields (num, text, type, hint_letter, options, choice_values).
+
+Common fixes:
+- If question text is missing or truncated, restore it from the original test text
+- If type is wrong (e.g. essay instead of fill_in_blank), correct it
+- If options are missing for multiple_choice, restore them from the original text
+- If hint_letter is missing for fill_in_blank_hint, extract it from the original text
+
+Return format: {"s1_q3": {<fixed question object>}, "s2_q1": {<fixed question object>}, ...}
+"""
+
+
+def fix_and_revalidate(test_data: dict, answer_key: dict, original_text: str,
+                       ai_client, model: str, max_rounds: int = 3) -> tuple[dict, dict]:
+    """
+    Run validate → fix → re-validate loop up to max_rounds times.
+    Returns (final_test_data, final_validation_result).
+    """
+    for round_num in range(max_rounds):
+        result = validate_test(test_data, answer_key, ai_client, model)
+        result["round"] = round_num + 1
+
+        if not result.get("issues") or result.get("error"):
+            return test_data, result
+
+        # Build subset of broken questions
+        broken_q_ids = {issue["q_id"] for issue in result["issues"]}
+        broken_questions = {}
+        q_map = {}
+        for sec in test_data.get("sections", []):
+            bn = sec.get("block_num", 0)
+            for q in sec.get("questions", []):
+                qid = f"s{bn}_q{q['num']}"
+                q_map[qid] = (sec, q)
+                if qid in broken_q_ids:
+                    broken_questions[qid] = q
+
+        if not broken_questions:
+            return test_data, result
+
+        problems_text = "\n".join(
+            f"- {i['q_id']}: {i['problem']}" for i in result["issues"]
+        )
+        answer_key_subset = {k: answer_key[k] for k in broken_q_ids if k in answer_key}
+
+        prompt = FIX_PROMPT.format(
+            problems=problems_text,
+            original_text=original_text[:6000],
+            broken_json=json.dumps(broken_questions, indent=2),
+            answer_key_subset=json.dumps(answer_key_subset, indent=2),
+        )
+
+        try:
+            response = ai_client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=4000,
+            )
+            raw = (response.choices[0].message.content or "").strip()
+            import re
+            raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
+            raw = re.sub(r"\s*```\s*$", "", raw, flags=re.MULTILINE)
+            fixes = json.loads(raw)
+        except Exception as e:
+            result["fix_error"] = f"Fix AI failed on round {round_num + 1}: {e}"
+            return test_data, result
+
+        # Apply fixes back into test_data
+        for qid, fixed_q in fixes.items():
+            if qid in q_map:
+                sec, old_q = q_map[qid]
+                idx = sec["questions"].index(old_q)
+                fixed_q["num"] = old_q["num"]  # preserve question number
+                sec["questions"][idx] = fixed_q
+
+        result["fixes_applied"] = list(fixes.keys())
+
+    # Final validation after last round
+    final_result = validate_test(test_data, answer_key, ai_client, model)
+    final_result["round"] = max_rounds
+    return test_data, final_result

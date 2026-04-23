@@ -181,8 +181,8 @@ def _clean_and_parse(raw: str) -> dict:
         return json.loads(repair_json(raw))
 
 
-def parse_test(file_bytes: bytes, filename: str, ai_client, model: str) -> dict:
-    """Parse test file into structured JSON using AI."""
+def parse_test(file_bytes: bytes, filename: str, ai_client, model: str) -> tuple:
+    """Parse test file into structured JSON using AI. Returns (test_data, original_text)."""
     text = extract_text(file_bytes, filename)
     prompt = TEST_PARSE_PROMPT + text
 
@@ -200,7 +200,7 @@ def parse_test(file_bytes: bytes, filename: str, ai_client, model: str) -> dict:
             "AI returned no questions — response may have been truncated. "
             "Try uploading with OpenAI instead, or split the test into smaller sections."
         )
-    return result
+    return result, text
 
 
 def parse_answer_key(file_bytes: bytes, filename: str, ai_client, model: str) -> dict:
