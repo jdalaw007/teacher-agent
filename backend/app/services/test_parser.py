@@ -181,8 +181,59 @@ def _clean_and_parse(raw: str) -> dict:
         return json.loads(repair_json(raw))
 
 
+def _pdf_to_b64_images(file_bytes: bytes, max_pages: int = 12, dpi: int = 150) -> list[str]:
+    """Convert PDF pages to base64-encoded PNG images using pymupdf."""
+    import fitz
+    import base64
+    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    images = []
+    for i in range(min(len(doc), max_pages)):
+        page = doc[i]
+        mat = fitz.Matrix(dpi / 72, dpi / 72)
+        pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
+        png_bytes = pix.tobytes("png")
+        images.append(base64.b64encode(png_bytes).decode("utf-8"))
+    doc.close()
+    return images
+
+
+def _parse_test_vision(file_bytes: bytes, ai_client, model: str) -> tuple:
+    """Parse a PDF test using GPT-4o vision — sees the page exactly as a human would."""
+    images = _pdf_to_b64_images(file_bytes)
+    if not images:
+        raise ValueError("Could not extract pages from PDF.")
+
+    content = [{"type": "text", "text": TEST_PARSE_PROMPT.replace("TEST TEXT:\n", "TEST (shown as images below):\n")}]
+    for b64 in images:
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{b64}", "detail": "high"}
+        })
+
+    response = ai_client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": content}],
+        max_tokens=16000,
+    )
+    raw = (response.choices[0].message.content or "").strip()
+    if not raw:
+        raise ValueError("Vision AI returned an empty response.")
+    result = _clean_and_parse(raw)
+    if not result.get("sections") or not any(s.get("questions") for s in result.get("sections", [])):
+        raise ValueError("Vision AI returned no questions — try uploading with OpenAI selected in Settings.")
+    # Use title as stand-in for original_text (vision has no extractable plain text)
+    original_text = f"[PDF — {len(images)} page(s) processed via vision]"
+    return result, original_text
+
+
 def parse_test(file_bytes: bytes, filename: str, ai_client, model: str) -> tuple:
-    """Parse test file into structured JSON using AI. Returns (test_data, original_text)."""
+    """Parse test file into structured JSON using AI. Returns (test_data, original_text).
+    PDFs use vision (GPT-4o image input); .txt/.docx use text extraction.
+    """
+    fname = filename.lower()
+    if fname.endswith(".pdf"):
+        return _parse_test_vision(file_bytes, ai_client, model)
+
     text = extract_text(file_bytes, filename)
     prompt = TEST_PARSE_PROMPT + text
 
@@ -205,14 +256,24 @@ def parse_test(file_bytes: bytes, filename: str, ai_client, model: str) -> tuple
 
 def parse_answer_key(file_bytes: bytes, filename: str, ai_client, model: str) -> dict:
     """Parse answer key file into {question_id: [answers]} mapping."""
-    text = extract_text(file_bytes, filename)
-    prompt = ANSWER_KEY_PROMPT + text
-
-    response = ai_client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=2000,
-    )
+    fname = filename.lower()
+    if fname.endswith(".pdf"):
+        images = _pdf_to_b64_images(file_bytes, max_pages=6)
+        content = [{"type": "text", "text": ANSWER_KEY_PROMPT}]
+        for b64 in images:
+            content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}", "detail": "high"}})
+        response = ai_client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": content}],
+            max_tokens=2000,
+        )
+    else:
+        text = extract_text(file_bytes, filename)
+        response = ai_client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": ANSWER_KEY_PROMPT + text}],
+            max_tokens=2000,
+        )
     raw = (response.choices[0].message.content or "").strip()
     if not raw:
         return {}

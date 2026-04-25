@@ -140,16 +140,16 @@ export default function TestsPage() {
       {/* Upload card */}
       <div style={s.card}>
         <h2 style={s.cardTitle}>Upload a new test</h2>
-        <p style={s.hint}>Upload your test document (.txt or .docx) and optionally an answer key. The AI will parse it into an interactive test page your students can complete online.</p>
+        <p style={s.hint}>Upload your test as a PDF (recommended) or .docx/.txt file, plus an optional answer key. PDF gives the best results — the AI reads the pages visually, preserving all formatting.</p>
 
         <div style={s.fileRow}>
           <div style={s.fileGroup}>
             <label style={s.label}>Test document <span style={s.required}>*</span></label>
-            <input ref={testFileRef} type="file" accept=".txt,.doc,.docx" style={s.fileInput} />
+            <input ref={testFileRef} type="file" accept=".pdf,.txt,.doc,.docx" style={s.fileInput} />
           </div>
           <div style={s.fileGroup}>
             <label style={s.label}>Answer key <span style={s.optional}>(optional)</span></label>
-            <input ref={keyFileRef} type="file" accept=".txt,.doc,.docx,.pdf" style={s.fileInput} />
+            <input ref={keyFileRef} type="file" accept=".pdf,.txt,.doc,.docx" style={s.fileInput} />
           </div>
         </div>
 
