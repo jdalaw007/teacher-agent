@@ -65,6 +65,49 @@ document.getElementById('datestamp').textContent = new Date().toLocaleDateString
   day: 'numeric', month: 'long', year: 'numeric'
 });
 
+// ── Auto-save & restore ───────────────────────────────────────────────────────
+const SAVE_KEY = 'test_autosave_' + window.location.pathname;
+var submitted = false;
+
+function saveAnswers() {
+  if (submitted) return;
+  const state = { name: document.getElementById('studentName').value };
+  document.getElementById('testForm').querySelectorAll('input[name], textarea[name]').forEach(el => {
+    if (el.type === 'radio') { if (el.checked) state[el.name] = el.value; }
+    else state[el.name] = el.value;
+  });
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch(e) {}
+}
+
+function restoreAnswers() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return;
+    const state = JSON.parse(raw);
+    if (state.name) document.getElementById('studentName').value = state.name;
+    document.getElementById('testForm').querySelectorAll('input[name], textarea[name]').forEach(el => {
+      const val = state[el.name];
+      if (val === undefined) return;
+      if (el.type === 'radio') { el.checked = (el.value === val); }
+      else el.value = val;
+    });
+  } catch(e) {}
+}
+
+// Save on every change, restore on load
+document.getElementById('testForm').addEventListener('input', saveAnswers);
+document.getElementById('testForm').addEventListener('change', saveAnswers);
+document.getElementById('studentName').addEventListener('input', saveAnswers);
+restoreAnswers();
+
+// ── Warn before closing if not submitted ─────────────────────────────────────
+window.addEventListener('beforeunload', function(e) {
+  if (submitted) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
+// ── Submit ────────────────────────────────────────────────────────────────────
 function submitTest() {
   const name = document.getElementById('studentName').value.trim();
   const err = document.getElementById('errorMsg');
@@ -96,6 +139,8 @@ function submitTest() {
   })
   .then(r => { if (!r.ok) throw new Error('Server error ' + r.status); return r.json(); })
   .then(() => {
+    submitted = true;
+    try { localStorage.removeItem(SAVE_KEY); } catch(e) {}
     document.getElementById('testForm').style.display = 'none';
     document.querySelector('.name-row').style.display = 'none';
     document.getElementById('confirmBox').style.display = 'block';
