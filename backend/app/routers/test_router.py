@@ -8,6 +8,7 @@ from app.services.database import get_db
 from app.services.token_store import get_user_id_from_token
 from app.services.test_html import generate_test_html
 from app.services.test_parser import parse_test, parse_answer_key
+from app.services.test_markdown import markdown_to_test_data
 from app.services.test_validator import fix_and_revalidate
 from app.services.profile import get_ai_client
 
@@ -421,18 +422,47 @@ def _substring_safe_match(a: str, b: str) -> bool:
 
 
 def _normalize_answer_key(answer_key: dict, test_data: dict) -> dict:
-    """For multiple_choice and binary_choice, expand the answer key so it accepts both
-    letter and text forms (whichever the student submits will match).
+    """For multiple_choice / binary_choice / match, expand the answer key so it accepts
+    either the letter or the text form (whichever the student submits will match).
+    Tick answers are stored as-is (a list of items the student should have checked).
     """
-    q_map = {}  # q_key -> question dict
+    q_map = {}  # q_key -> (section, question)
     for sec in test_data.get("sections", []):
         bn = sec.get("block_num", 0)
         for q in sec.get("questions", []):
-            q_map[f"s{bn}_q{q['num']}"] = q
+            q_map[f"s{bn}_q{q['num']}"] = (sec, q)
 
     normalized = {}
     for k, v in answer_key.items():
-        q = q_map.get(k)
+        entry = q_map.get(k)
+        q = entry[1] if entry else None
+        sec = entry[0] if entry else None
+
+        if q and q.get("type") == "tick":
+            # Tick answers are a set of items the student should select.
+            vals = v if isinstance(v, list) else [v]
+            normalized[k] = [str(x).strip() for x in vals]
+            continue
+
+        if q and q.get("type") == "match":
+            # Allow either the option letter ("a") or the option text ("sports centre")
+            options = (sec or {}).get("match_options") or []
+            vals = v if isinstance(v, list) else [v]
+            extra = set()
+            for ans in vals:
+                ans_lower = str(ans).lower().strip()
+                for opt in options:
+                    if isinstance(opt, (list, tuple)) and len(opt) >= 2:
+                        letter = str(opt[0]).lower().strip()
+                        opt_text = str(opt[1]).lower().strip()
+                        if ans_lower == letter:
+                            extra.add(opt_text)
+                        elif ans_lower == opt_text:
+                            extra.add(letter)
+            merged = list(dict.fromkeys([str(x).lower() for x in vals] + list(extra)))
+            normalized[k] = merged
+            continue
+
         if q and q.get("type") == "multiple_choice":
             options = q.get("options") or []
             vals = v if isinstance(v, list) else [v]
@@ -564,6 +594,54 @@ async def _upload_test_inner(request, test_file, answer_key_file):
             pass
 
     return {"test_id": test_id, "title": title, "url": f"/test/{test_id}", "validation": validation}
+
+
+class FromMarkdownRequest(BaseModel):
+    markdown: str
+    title: Optional[str] = None
+
+
+@router.post("/from-markdown")
+async def create_test_from_markdown(body: FromMarkdownRequest, request: Request):
+    """Build a test directly from markdown — no AI parsing involved.
+    The markdown spec is documented in app/services/test_markdown.py.
+    """
+    user_id = _require_auth(request)
+
+    if not body.markdown.strip():
+        raise HTTPException(status_code=400, detail="Markdown cannot be empty")
+
+    try:
+        parsed = markdown_to_test_data(body.markdown)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Could not parse markdown: {e}")
+
+    test_data = parsed["test_data"]
+    answer_key = parsed["answer_key"]
+
+    if body.title:
+        test_data["title"] = body.title
+
+    test_data = _ensure_unique_block_nums(test_data)
+    answer_key = _normalize_answer_key(answer_key, test_data)
+
+    if not test_data.get("sections"):
+        raise HTTPException(status_code=422, detail="No sections found in markdown")
+
+    test_id = uuid.uuid4().hex[:8]
+    title = test_data.get("title") or "Untitled Test"
+
+    db = get_db()
+    try:
+        db.execute(
+            "INSERT INTO tests (id, teacher_user_id, title, test_data, answer_key) VALUES (?, ?, ?, ?, ?)",
+            (test_id, user_id, title, json.dumps(test_data), json.dumps(answer_key))
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    return {"test_id": test_id, "title": title, "url": f"/test/{test_id}"}
 
 
 @router.get("/list")

@@ -42,6 +42,12 @@ input.ans:focus { border-bottom-color: #0066cc; background: #f0f8ff; }
 .options-row { display: flex; gap: 10px; margin: 4px 0 4px 12px; flex-wrap: wrap; }
 .options-row label { display: flex; align-items: center; gap: 4px; cursor: pointer; padding: 4px 12px; border: 1px solid #ddd; border-radius: 20px; font-size: 13px; transition: all 0.15s; }
 .options-row label:hover { background: #e8f0fe; border-color: #0066cc; }
+.tick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px 14px; margin: 8px 0 8px 12px; }
+.tick-grid label { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 4px 8px; border-radius: 4px; font-size: 13px; }
+.tick-grid label:hover { background: #f0f0f0; }
+.match-row { display: flex; align-items: center; gap: 8px; margin: 5px 0 5px 12px; flex-wrap: wrap; }
+.match-row .match-text { flex: 1 1 280px; }
+.match-row select { padding: 4px 8px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; background: white; }
 .writing-guide { background: #f8f8f8; border: 1px solid #ddd; border-radius: 4px; padding: 10px 14px; margin: 8px 0; font-size: 12px; color: #555; line-height: 1.7; }
 textarea.writing-box { width: 100%; min-height: 130px; border: 1px solid #ccc; padding: 10px; font-size: 14px; font-family: Arial, sans-serif; resize: vertical; outline: none; border-radius: 4px; }
 textarea.writing-box:focus { border-color: #0066cc; box-shadow: 0 0 0 2px rgba(0,102,204,0.12); }
@@ -72,8 +78,9 @@ var submitted = false;
 function saveAnswers() {
   if (submitted) return;
   const state = { name: document.getElementById('studentName').value, ts: Date.now() };
-  document.getElementById('testForm').querySelectorAll('input[name], textarea[name]').forEach(el => {
+  document.getElementById('testForm').querySelectorAll('input[name], textarea[name], select[name]').forEach(el => {
     if (el.type === 'radio') { if (el.checked) state[el.name] = el.value; }
+    else if (el.type === 'checkbox') { state[el.name] = el.checked ? el.value : ''; }
     else state[el.name] = el.value;
   });
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch(e) {}
@@ -90,10 +97,11 @@ function restoreAnswers() {
       return false;
     }
     if (state.name) document.getElementById('studentName').value = state.name;
-    document.getElementById('testForm').querySelectorAll('input[name], textarea[name]').forEach(el => {
+    document.getElementById('testForm').querySelectorAll('input[name], textarea[name], select[name]').forEach(el => {
       const val = state[el.name];
       if (val === undefined) return;
       if (el.type === 'radio') { el.checked = (el.value === val); }
+      else if (el.type === 'checkbox') { el.checked = !!val; }
       else el.value = val;
     });
     return true;
@@ -141,9 +149,24 @@ function submitTest() {
   err.textContent = '';
 
   const answers = {};
-  document.getElementById('testForm').querySelectorAll('input[name], textarea[name]').forEach(el => {
+  // First pass: collect tick checkboxes into arrays keyed by the parent question
+  const tickGroups = {};
+  document.getElementById('testForm').querySelectorAll('input[type="checkbox"][name]').forEach(el => {
+    const m = el.name.match(/^(.+)__t\d+$/);
+    if (!m) return;
+    const qname = m[1];
+    if (!tickGroups[qname]) tickGroups[qname] = [];
+    if (el.checked) tickGroups[qname].push(el.value);
+  });
+  for (const k in tickGroups) answers[k] = tickGroups[k];
+
+  // Second pass: everything else (radio, text, textarea, select)
+  document.getElementById('testForm').querySelectorAll('input[name], textarea[name], select[name]').forEach(el => {
+    if (el.type === 'checkbox') return;
     if (el.type === 'radio') {
       if (el.checked) answers[el.name] = el.value;
+    } else if (el.tagName === 'SELECT') {
+      answers[el.name] = el.value;
     } else {
       const hint = el.dataset.hint || '';
       answers[el.name] = hint + el.value.trim();
@@ -262,6 +285,30 @@ def _render_question(q: dict, block_num: int) -> str:
         inp = f'<input class="ans ans-xl" spellcheck="false" autocorrect="off" name="{q_key}" style="margin-top:5px">'
         return f'<div class="q">{q["num"]}. {text}<br>{inp}</div>'
 
+    elif qtype == "tick":
+        items = q.get("tick_items") or []
+        boxes = '<div class="tick-grid">'
+        for i, item in enumerate(items):
+            v = html_lib.escape(str(item))
+            # Use a checkbox per item; name encodes both question and item index
+            box_name = f'{q_key}__t{i}'
+            boxes += f'<label><input type="checkbox" name="{box_name}" value="{v}"> {v}</label>'
+        boxes += '</div>'
+        prefix = f'{q["num"]}. {text}' if text else f'{q["num"]}.'
+        return f'<div class="q">{prefix}\n{boxes}</div>'
+
+    elif qtype == "match":
+        # Match items render as a select dropdown — the section provides match_options
+        # but options are passed in via q["__match_options"] by the section renderer.
+        opts = q.get("__match_options") or []
+        sel = f'<select name="{q_key}"><option value="">— pick —</option>'
+        for letter, opt_text in opts:
+            v = html_lib.escape(str(opt_text))
+            l = html_lib.escape(str(letter))
+            sel += f'<option value="{v}">{l}) {v}</option>'
+        sel += '</select>'
+        return f'<div class="match-row"><span class="match-text">{q["num"]}. {text}</span>{sel}</div>'
+
     elif qtype == "essay":
         ta = f'<textarea class="writing-box" name="{q_key}" spellcheck="false" autocorrect="off" autocomplete="off" data-gramm="false" placeholder="Write your answer here..."></textarea>'
         return f'<div class="q">{ta}</div>'
@@ -333,8 +380,20 @@ def _render_section(section: dict, prev_section_title: str) -> str:
     if writing_guide:
         parts.append(f'<div class="writing-guide">{html_lib.escape(writing_guide)}</div>')
 
+    # For match-type sections, render the option pool as a header strip and
+    # inject match_options into each question so the dropdowns know the choices.
+    match_options = section.get("match_options") or []
+    if match_options:
+        opt_strs = " &nbsp; &nbsp; ".join(
+            f"<strong>{html_lib.escape(str(letter))})</strong> {html_lib.escape(str(text))}"
+            for letter, text in match_options
+        )
+        parts.append(f'<div class="word-box">{opt_strs}</div>')
+
     # Questions
     for q in section.get("questions", []):
+        if q.get("type") == "match":
+            q = {**q, "__match_options": match_options}
         parts.append(_render_question(q, block_num))
 
     return "\n".join(parts)

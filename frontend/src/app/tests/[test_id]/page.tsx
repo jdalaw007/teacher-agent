@@ -26,7 +26,7 @@ interface AiGrade {
 interface Submission {
   id: number;
   student_name: string;
-  answers: Record<string, string>;
+  answers: Record<string, string | string[]>;
   ai_grades: Record<string, AiGrade>;
   submitted_at: string;
 }
@@ -55,9 +55,17 @@ function stripPunct(s: string): string {
     .trim();
 }
 
-function checkAnswer(qKey: string, given: string, answerKey: Record<string, string | string[]>): boolean | null {
+function checkAnswer(qKey: string, given: string | string[], answerKey: Record<string, string | string[]>): boolean | null {
   const correct = getCorrectAnswers(qKey, answerKey);
   if (!correct) return null;
+  // Tick answers come as arrays — treat as set comparison
+  if (Array.isArray(given)) {
+    const a = new Set(given.map(g => stripPunct(g.toLowerCase())));
+    const b = new Set(correct.map(c => stripPunct(c)));
+    if (a.size !== b.size) return false;
+    for (const x of a) if (!b.has(x)) return false;
+    return true;
+  }
   const givenNorm = stripPunct((given || "").toLowerCase().trim());
   return correct.some(c => stripPunct(c) === givenNorm);
 }
@@ -72,7 +80,7 @@ function displayCorrect(correct: string[]): string {
   return best.length > 1 ? best : correct.join(' / ');
 }
 
-function autoScore(answers: Record<string, string>, answerKey: Record<string, string | string[]>): number {
+function autoScore(answers: Record<string, string | string[]>, answerKey: Record<string, string | string[]>): number {
   return Object.keys(answerKey).filter(k => checkAnswer(k, answers[k] || "", answerKey) === true).length;
 }
 

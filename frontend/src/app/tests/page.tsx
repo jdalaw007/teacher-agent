@@ -27,6 +27,12 @@ export default function TestsPage() {
   const [renameValue, setRenameValue] = useState("");
   const testFileRef = useRef<HTMLInputElement>(null);
   const keyFileRef = useRef<HTMLInputElement>(null);
+  const [markdown, setMarkdown] = useState("");
+  const [mdTitle, setMdTitle] = useState("");
+  const [mdSubmitting, setMdSubmitting] = useState(false);
+  const [mdMsg, setMdMsg] = useState("");
+  const [mdErr, setMdErr] = useState("");
+  const [mdShown, setMdShown] = useState(false);
 
   useEffect(() => { loadTests(); }, []);
 
@@ -124,6 +130,33 @@ export default function TestsPage() {
     }
   }
 
+  async function handleCreateFromMarkdown() {
+    if (!markdown.trim()) { setMdErr("Paste some markdown first."); return; }
+    const token = getToken();
+    if (!token) { setMdErr("Not logged in."); return; }
+    setMdSubmitting(true);
+    setMdErr(""); setMdMsg("");
+    try {
+      const r = await fetch(`${API_URL}/test/from-markdown`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ markdown, title: mdTitle.trim() || undefined }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ detail: r.statusText }));
+        throw new Error(err.detail || r.statusText);
+      }
+      const data = await r.json();
+      setMdMsg(`"${data.title}" created. Test ID: ${data.test_id}`);
+      setMarkdown(""); setMdTitle("");
+      loadTests();
+    } catch (e: unknown) {
+      setMdErr(`Could not create: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setMdSubmitting(false);
+    }
+  }
+
   function copyUrl(testId: string) {
     const url = `${RAILWAY_URL}/test/${testId}`;
     navigator.clipboard.writeText(url).then(() => {
@@ -185,6 +218,57 @@ export default function TestsPage() {
         <button style={uploading ? s.btnDisabled : s.btn} onClick={handleUpload} disabled={uploading}>
           {uploading ? "Uploading & parsing..." : "Upload test"}
         </button>
+      </div>
+
+      {/* Markdown direct entry */}
+      <div style={s.card}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h2 style={s.cardTitle}>Or paste markdown directly</h2>
+          <button style={s.btnSmall} onClick={() => setMdShown(v => !v)}>{mdShown ? "Hide" : "Show"}</button>
+        </div>
+        {mdShown && (
+          <>
+            <p style={s.hint}>
+              Build a test by typing it in markdown — no AI parsing, no upload. The format is documented in
+              <code> backend/app/services/test_markdown.py</code>. Quick examples:
+              <code style={{ display: "block", whiteSpace: "pre-wrap", background: "#f5f5f5", padding: "8px 12px", borderRadius: 4, marginTop: 6, fontSize: 12 }}>{`## 1. Vocabulary (5 marks)
+> Complete the sentences.
+
+1. Joe's a big f________ of metal.   = fan
+2. (*There's / are) two theatres.
+
+## 2. Listening (5 marks)
+> Tick the adjectives you hear.
+1.
+   [ ] small *
+   [ ] modern *
+   [ ] dirty`}</code>
+            </p>
+            <input
+              type="text"
+              placeholder="Test title (optional, overrides # heading)"
+              value={mdTitle}
+              onChange={e => setMdTitle(e.target.value)}
+              style={{ width: "100%", padding: "6px 10px", border: "1px solid #ccc", borderRadius: 5, fontSize: 14, marginBottom: 8 }}
+            />
+            <textarea
+              value={markdown}
+              onChange={e => setMarkdown(e.target.value)}
+              placeholder="# My Test&#10;&#10;## 1. Block name (10 marks)&#10;> Instruction&#10;&#10;1. Question text   = answer"
+              rows={14}
+              style={{ width: "100%", padding: "10px 12px", border: "1px solid #ccc", borderRadius: 5, fontSize: 13, fontFamily: "Menlo, Consolas, monospace", resize: "vertical" }}
+            />
+            {mdErr && <div style={s.errMsg}>{mdErr}</div>}
+            {mdMsg && <div style={s.okMsg}>{mdMsg}</div>}
+            <button
+              style={mdSubmitting ? s.btnDisabled : s.btn}
+              onClick={handleCreateFromMarkdown}
+              disabled={mdSubmitting}
+            >
+              {mdSubmitting ? "Creating..." : "Create test from markdown"}
+            </button>
+          </>
+        )}
       </div>
 
       {/* Tests list */}
