@@ -9,6 +9,7 @@ from app.services.token_store import get_user_id_from_token
 from app.services.test_html import generate_test_html
 from app.services.test_parser import parse_test, parse_answer_key
 from app.services.test_markdown import markdown_to_test_data
+from app.services.test_to_markdown import extract_to_markdown
 from app.services.test_validator import fix_and_revalidate
 from app.services.profile import get_ai_client
 
@@ -594,6 +595,37 @@ async def _upload_test_inner(request, test_file, answer_key_file):
             pass
 
     return {"test_id": test_id, "title": title, "url": f"/test/{test_id}", "validation": validation}
+
+
+@router.post("/parse-to-markdown")
+async def parse_to_markdown(request: Request, test_file: UploadFile = File(...)):
+    """Run the two-pass AI extractor: outline -> per-block markdown.
+    Returns the full markdown, the outline, and any per-block errors so the
+    teacher can review and fix before creating the test.
+    """
+    user_id = _require_auth(request)
+
+    ai_client, model = get_ai_client(user_id)
+    if not ai_client:
+        raise HTTPException(status_code=400, detail="No AI API key configured. Add one in Settings.")
+
+    file_bytes = await test_file.read()
+    filename = test_file.filename or "test.txt"
+
+    try:
+        result = extract_to_markdown(file_bytes, filename, ai_client, model)
+    except Exception as e:
+        import traceback
+        raise HTTPException(
+            status_code=422,
+            detail=f"AI markdown extraction failed: {e} | {traceback.format_exc()[-400:]}"
+        )
+
+    return {
+        "markdown": result["markdown"],
+        "outline": result["outline"],
+        "errors": result["errors"],
+    }
 
 
 class FromMarkdownRequest(BaseModel):

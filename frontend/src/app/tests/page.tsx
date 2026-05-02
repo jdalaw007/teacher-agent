@@ -20,13 +20,10 @@ export default function TestsPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState("");
   const [uploadErr, setUploadErr] = useState("");
-  const [uploadedTestId, setUploadedTestId] = useState("");
-  const [validation, setValidation] = useState<{passed:number;failed:number;skipped:number;issues:{q_id:string;problem:string}[];error?:string;round?:number;fixes_applied?:string[];fix_error?:string} | null>(null);
   const [copiedId, setCopiedId] = useState("");
   const [renamingId, setRenamingId] = useState("");
   const [renameValue, setRenameValue] = useState("");
   const testFileRef = useRef<HTMLInputElement>(null);
-  const keyFileRef = useRef<HTMLInputElement>(null);
   const [markdown, setMarkdown] = useState("");
   const [mdTitle, setMdTitle] = useState("");
   const [mdSubmitting, setMdSubmitting] = useState(false);
@@ -59,15 +56,13 @@ export default function TestsPage() {
 
     setUploading(true);
     setUploadErr("");
-    setUploadMsg("Parsing test with AI... this may take 20-30 seconds.");
+    setUploadMsg("Extracting outline with AI... then converting each block to markdown. This takes 30-60 seconds.");
 
     const formData = new FormData();
     formData.append("test_file", testFile);
-    const keyFile = keyFileRef.current?.files?.[0];
-    if (keyFile) formData.append("answer_key_file", keyFile);
 
     try {
-      const r = await fetch(`${API_URL}/test/upload`, {
+      const r = await fetch(`${API_URL}/test/parse-to-markdown`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -77,14 +72,24 @@ export default function TestsPage() {
         throw new Error(err.detail || r.statusText);
       }
       const data = await r.json();
-      setUploadMsg(`"${data.title}" uploaded successfully.`);
-      setUploadedTestId(data.test_id);
-      setValidation(data.validation || null);
+      // Drop the markdown into the editor below for review
+      setMarkdown(data.markdown || "");
+      setMdShown(true);
+      const blockCount = data.outline?.blocks?.length || 0;
+      const errCount = (data.errors || []).length;
+      if (errCount === 0) {
+        setUploadMsg(`AI extracted ${blockCount} block${blockCount !== 1 ? "s" : ""}. Review the markdown below, then click "Create test from markdown".`);
+      } else {
+        setUploadMsg(`AI extracted ${blockCount - errCount}/${blockCount} blocks (${errCount} failed). Review and fix the markdown below before creating the test.`);
+        setUploadErr(`Errors: ${(data.errors || []).join("; ")}`);
+      }
       if (testFileRef.current) testFileRef.current.value = "";
-      if (keyFileRef.current) keyFileRef.current.value = "";
-      loadTests();
+      // Scroll to the markdown editor
+      setTimeout(() => {
+        document.getElementById("markdown-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
     } catch (e: unknown) {
-      setUploadErr(`Upload failed: ${e instanceof Error ? e.message : String(e)}`);
+      setUploadErr(`Extraction failed: ${e instanceof Error ? e.message : String(e)}`);
       setUploadMsg("");
     } finally {
       setUploading(false);
@@ -170,60 +175,38 @@ export default function TestsPage() {
       <button style={s.backBtn} onClick={() => router.push('/dashboard')}>&larr; Dashboard</button>
       <h1 style={s.pageTitle}>Tests</h1>
 
-      {/* Upload card */}
+      {/* Upload card — AI-assisted: extracts to markdown for review */}
       <div style={s.card}>
-        <h2 style={s.cardTitle}>Upload a new test</h2>
-        <p style={s.hint}>Upload your test as a PDF (recommended) or .docx/.txt file, plus an optional answer key. PDF gives the best results — the AI reads the pages visually, preserving all formatting.</p>
+        <h2 style={s.cardTitle}>Upload a test (AI extracts markdown)</h2>
+        <p style={s.hint}>
+          Upload a PDF, .docx, or .txt. AI runs a two-pass extraction — first reading the
+          outline, then converting each block to our markdown format independently.
+          You&apos;ll review and fix the markdown before the test is created, so any AI mistakes
+          get corrected before students see it.
+        </p>
 
-        <div style={s.fileRow}>
-          <div style={s.fileGroup}>
-            <label style={s.label}>Test document <span style={s.required}>*</span></label>
-            <input ref={testFileRef} type="file" accept=".pdf,.txt,.doc,.docx" style={s.fileInput} />
-          </div>
-          <div style={s.fileGroup}>
-            <label style={s.label}>Answer key <span style={s.optional}>(optional)</span></label>
-            <input ref={keyFileRef} type="file" accept=".pdf,.txt,.doc,.docx" style={s.fileInput} />
-          </div>
+        <div style={s.fileGroup}>
+          <label style={s.label}>Test document <span style={s.required}>*</span></label>
+          <input ref={testFileRef} type="file" accept=".pdf,.txt,.doc,.docx" style={s.fileInput} />
+          <p style={{ fontSize: 12, color: "#888", margin: "6px 0 0" }}>
+            Answer key is no longer a separate file — mark correct answers inline in the markdown
+            (with <code>*</code> on options or <code>= answer</code> on fill-ins). The AI does this for you;
+            you just verify.
+          </p>
         </div>
 
         {uploadErr && <div style={s.errMsg}>{uploadErr}</div>}
-        {uploadMsg && (
-          <div style={s.okMsg}>
-            {uploadMsg}
-            {uploadedTestId && (
-              <> &nbsp;·&nbsp; <button style={s.inlineLink} onClick={() => router.push(`/tests/${uploadedTestId}`)}>View results</button></>
-            )}
-          </div>
-        )}
-        {validation && (
-          <div style={validation.failed === 0 ? s.valOk : s.valWarn}>
-            <strong>AI Validation</strong>{validation.round && validation.round > 1 ? ` (auto-fixed in ${validation.round} round${validation.round > 1 ? "s" : ""})` : ""}:{" "}
-            {validation.error
-              ? `Validator error: ${validation.error}`
-              : `${validation.passed} questions OK${validation.failed > 0 ? `, ${validation.failed} still flagged` : ", all clear"}, ${validation.skipped} without key`}
-            {validation.fixes_applied && validation.fixes_applied.length > 0 && (
-              <div style={{ fontSize: 12, marginTop: 4 }}>Auto-fixed: {validation.fixes_applied.join(", ")}</div>
-            )}
-            {validation.fix_error && <div style={{ fontSize: 12, marginTop: 4, color: "#c00" }}>{validation.fix_error}</div>}
-            {validation.issues && validation.issues.length > 0 && (
-              <ul style={s.issueList}>
-                {validation.issues.map((issue, i) => (
-                  <li key={i}><strong>{issue.q_id}:</strong> {issue.problem}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+        {uploadMsg && <div style={s.okMsg}>{uploadMsg}</div>}
 
         <button style={uploading ? s.btnDisabled : s.btn} onClick={handleUpload} disabled={uploading}>
-          {uploading ? "Uploading & parsing..." : "Upload test"}
+          {uploading ? "Extracting..." : "Extract markdown with AI"}
         </button>
       </div>
 
-      {/* Markdown direct entry */}
-      <div style={s.card}>
+      {/* Markdown editor — review AI output OR paste your own */}
+      <div id="markdown-card" style={s.card}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={s.cardTitle}>Or paste markdown directly</h2>
+          <h2 style={s.cardTitle}>Markdown editor — review or paste</h2>
           <button style={s.btnSmall} onClick={() => setMdShown(v => !v)}>{mdShown ? "Hide" : "Show"}</button>
         </div>
         {mdShown && (
