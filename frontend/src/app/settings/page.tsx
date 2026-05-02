@@ -30,6 +30,7 @@ interface FormData {
   about: string
   openai_api_key: string
   gemini_api_key: string
+  claude_api_key: string
   ai_provider: string
   language: string
   skills_enabled: Record<string, boolean>
@@ -45,7 +46,7 @@ export default function SettingsPage() {
   const [form, setForm] = useState<FormData>({
     display_name: '', school_org: '', role: 'Teacher',
     subjects: [], grade_levels: [], teaching_style: '', about: '',
-    openai_api_key: '', gemini_api_key: '', ai_provider: 'openai', language: 'English',
+    openai_api_key: '', gemini_api_key: '', claude_api_key: '', ai_provider: 'openai', language: 'English',
     skills_enabled: { classroom_post: true, gmail: false, calendar: false, drive_print: false },
   })
   const [subjectInput, setSubjectInput] = useState('')
@@ -55,6 +56,9 @@ export default function SettingsPage() {
   const [geminiKeyStatus, setGeminiKeyStatus] = useState<'idle' | 'testing' | 'valid' | 'invalid' | 'saved'>('idle')
   const [hasGeminiKey, setHasGeminiKey] = useState(false)
   const [geminiKeyError, setGeminiKeyError] = useState('')
+  const [claudeKeyStatus, setClaudeKeyStatus] = useState<'idle' | 'testing' | 'valid' | 'invalid' | 'saved'>('idle')
+  const [hasClaudeKey, setHasClaudeKey] = useState(false)
+  const [claudeKeyError, setClaudeKeyError] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -86,6 +90,7 @@ export default function SettingsPage() {
             about: data.about || '',
             openai_api_key: '',
             gemini_api_key: '',
+            claude_api_key: '',
             ai_provider: data.ai_provider || 'openai',
             language: data.language || 'English',
             skills_enabled: {
@@ -95,6 +100,7 @@ export default function SettingsPage() {
           })
           setHasExistingKey(!!data.has_api_key)
           setHasGeminiKey(!!data.has_gemini_key)
+          setHasClaudeKey(!!data.has_claude_key)
         }
         setLoading(false)
       })
@@ -154,6 +160,23 @@ export default function SettingsPage() {
     }
   }
 
+  const testClaudeKey = async () => {
+    if (!form.claude_api_key.trim()) return
+    setClaudeKeyStatus('testing'); setClaudeKeyError('')
+    try {
+      const r = await fetch(`${API_URL}/onboarding/test-claude-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ claude_api_key: form.claude_api_key.trim() }),
+      })
+      const data = await r.json()
+      setClaudeKeyStatus(data.valid ? 'valid' : 'invalid')
+      if (!data.valid) setClaudeKeyError(data.error || 'Invalid key')
+    } catch {
+      setClaudeKeyStatus('invalid'); setClaudeKeyError('Could not reach server')
+    }
+  }
+
   const handleExport = async () => {
     if (!token) return
     setExporting(true)
@@ -190,6 +213,7 @@ export default function SettingsPage() {
       setSaved(true)
       if (form.openai_api_key) { setKeyStatus('saved'); setHasExistingKey(true) }
       if (form.gemini_api_key) { setGeminiKeyStatus('saved'); setHasGeminiKey(true) }
+      if (form.claude_api_key) { setClaudeKeyStatus('saved'); setHasClaudeKey(true) }
       const prevLang = localStorage.getItem('language')
       localStorage.setItem('language', form.language)
       if (prevLang !== form.language) {
@@ -314,8 +338,8 @@ export default function SettingsPage() {
           </p>
 
           <label style={s.label}>{t('provider')}</label>
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-            {(['openai', 'gemini'] as const).map(p => (
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
+            {(['openai', 'gemini', 'claude'] as const).map(p => (
               <button key={p} onClick={() => update('ai_provider', p)}
                 style={{
                   ...s.roleBtn,
@@ -323,7 +347,7 @@ export default function SettingsPage() {
                   textTransform: 'none',
                   minWidth: '100px',
                 }}>
-                {p === 'openai' ? 'OpenAI (GPT-4o)' : 'Gemini (Google)'}
+                {p === 'openai' ? 'OpenAI (GPT-4o)' : p === 'gemini' ? 'Gemini (Google)' : 'Claude (Opus)'}
               </button>
             ))}
           </div>
@@ -380,6 +404,33 @@ export default function SettingsPage() {
               </span>}
             {geminiKeyStatus === 'invalid' &&
               <span style={{ color: '#ea4335', fontSize: '0.88rem' }}>{geminiKeyError}</span>}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '20px' }}>
+            <label style={{ ...s.label, marginTop: 0, marginBottom: 0 }}>Claude API key (Anthropic)</label>
+            {hasClaudeKey && claudeKeyStatus === 'idle' && !form.claude_api_key && (
+              <span style={{ fontSize: '0.82rem', color: '#34a853', fontWeight: 500 }}>{t('keyOnFile')}</span>
+            )}
+          </div>
+          <input
+            style={{
+              ...s.input, fontFamily: 'monospace', marginTop: '6px',
+              border: `1px solid ${claudeKeyStatus === 'valid' || claudeKeyStatus === 'saved' ? '#34a853' : claudeKeyStatus === 'invalid' ? '#ea4335' : '#ddd'}`,
+            }}
+            type="password" value={form.claude_api_key}
+            onChange={e => { update('claude_api_key', e.target.value); setClaudeKeyStatus('idle') }}
+            placeholder={hasClaudeKey ? t('keepExistingKey') : 'sk-ant-...'} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px' }}>
+            <button style={{ ...s.testBtn, opacity: !form.claude_api_key.trim() ? 0.5 : 1 }}
+              onClick={testClaudeKey} disabled={!form.claude_api_key.trim() || claudeKeyStatus === 'testing'}>
+              {claudeKeyStatus === 'testing' ? tCommon('testing') : t('testKey')}
+            </button>
+            {(claudeKeyStatus === 'valid' || claudeKeyStatus === 'saved') &&
+              <span style={{ color: '#34a853', fontSize: '0.88rem' }}>
+                {claudeKeyStatus === 'saved' ? t('keySaved') : t('keyValid')}
+              </span>}
+            {claudeKeyStatus === 'invalid' &&
+              <span style={{ color: '#ea4335', fontSize: '0.88rem' }}>{claudeKeyError}</span>}
           </div>
         </div>
 

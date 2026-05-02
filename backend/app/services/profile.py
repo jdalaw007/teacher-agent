@@ -26,9 +26,10 @@ class ProfileService:
             p["grade_levels"] = json.loads(p.get("grade_levels") or "[]")
             stored = json.loads(p.get("skills_enabled") or "{}")
             p["skills_enabled"] = {**DEFAULT_SKILLS, **stored}
-            # Never return raw API keys to callers — use get_api_key() / get_gemini_api_key() instead
+            # Never return raw API keys to callers — use get_api_key() / get_gemini_api_key() / get_claude_api_key() instead
             p["has_api_key"] = bool(p.pop("openai_api_key", None))
             p["has_gemini_key"] = bool(p.pop("gemini_api_key", None))
+            p["has_claude_key"] = bool(p.pop("claude_api_key", None))
             return p
         finally:
             db.close()
@@ -57,6 +58,18 @@ class ProfileService:
         finally:
             db.close()
 
+    def get_claude_api_key(self) -> str:
+        """Return the user's stored Claude (Anthropic) API key, or empty string."""
+        db = get_db()
+        try:
+            row = db.execute(
+                "SELECT claude_api_key FROM user_profiles WHERE user_id = ?",
+                (self.user_id,)
+            ).fetchone()
+            return (row["claude_api_key"] or "") if row else ""
+        finally:
+            db.close()
+
     def get_ai_provider(self) -> str:
         """Return the user's preferred AI provider ('openai' or 'gemini')."""
         db = get_db()
@@ -74,6 +87,7 @@ class ProfileService:
         grade_levels = json.dumps(data.get("grade_levels", []))
         api_key = data.get("openai_api_key", "")
         gemini_key = data.get("gemini_api_key", "")
+        claude_key = data.get("claude_api_key", "")
         ai_provider = data.get("ai_provider", "")
         skills_raw = data.get("skills_enabled")
         skills_json = json.dumps(skills_raw) if isinstance(skills_raw, dict) else ""
@@ -98,6 +112,7 @@ class ProfileService:
                         about = ?,
                         openai_api_key = CASE WHEN ? = '' THEN openai_api_key ELSE ? END,
                         gemini_api_key = CASE WHEN ? = '' THEN gemini_api_key ELSE ? END,
+                        claude_api_key = CASE WHEN ? = '' THEN claude_api_key ELSE ? END,
                         ai_provider = CASE WHEN ? = '' THEN ai_provider ELSE ? END,
                         language = CASE WHEN ? = '' THEN language ELSE ? END,
                         skills_enabled = CASE WHEN ? = '' THEN skills_enabled ELSE ? END,
@@ -114,6 +129,7 @@ class ProfileService:
                     data.get("about", ""),
                     api_key, api_key,
                     gemini_key, gemini_key,
+                    claude_key, claude_key,
                     ai_provider, ai_provider,
                     language, language,
                     skills_json, skills_json,
@@ -124,8 +140,8 @@ class ProfileService:
                     INSERT INTO user_profiles
                         (user_id, display_name, school_org, role, subjects,
                          grade_levels, teaching_style, about, openai_api_key,
-                         gemini_api_key, ai_provider, language, skills_enabled, onboarding_complete)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                         gemini_api_key, claude_api_key, ai_provider, language, skills_enabled, onboarding_complete)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                 """, (
                     self.user_id,
                     data.get("display_name", ""),
@@ -137,6 +153,7 @@ class ProfileService:
                     data.get("about", ""),
                     api_key,
                     gemini_key,
+                    claude_key,
                     ai_provider or "openai",
                     language or "English",
                     skills_json or json.dumps(DEFAULT_SKILLS),
@@ -232,6 +249,14 @@ def get_ai_client(user_id: str):
                 api_key=gemini_key,
                 base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
             ), "models/gemini-2.5-flash"
+    if provider == "claude":
+        claude_key = ps.get_claude_api_key()
+        if claude_key:
+            return OpenAI(
+                api_key=claude_key,
+                base_url="https://api.anthropic.com/v1/",
+                default_headers={"anthropic-version": "2023-06-01"},
+            ), "claude-opus-4-7"
     # Fall through to OpenAI
     user_key = ps.get_api_key()
     api_key = user_key or settings.openai_api_key
