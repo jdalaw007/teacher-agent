@@ -410,9 +410,19 @@ async def clear_unit7_submissions(request: Request):
 # Dynamic test management — also before /{test_id} catch-all
 # ---------------------------------------------------------------------------
 
+def _substring_safe_match(a: str, b: str) -> bool:
+    """True if a == b, or one substring-contains the other AND both are at least 5 chars.
+    Prevents short-string false positives like "no" matching "renovate"."""
+    if a == b:
+        return True
+    if len(a) >= 5 and len(b) >= 5 and (a in b or b in a):
+        return True
+    return False
+
+
 def _normalize_answer_key(answer_key: dict, test_data: dict) -> dict:
-    """For multiple_choice questions, ensure answer key accepts the letter the student submits.
-    If key has text ("discovered"), find matching option letter ("b") and store both.
+    """For multiple_choice and binary_choice, expand the answer key so it accepts both
+    letter and text forms (whichever the student submits will match).
     """
     q_map = {}  # q_key -> question dict
     for sec in test_data.get("sections", []):
@@ -428,19 +438,50 @@ def _normalize_answer_key(answer_key: dict, test_data: dict) -> dict:
             vals = v if isinstance(v, list) else [v]
             extra = set()
             for ans in vals:
-                ans_lower = str(ans).lower().strip()
+                ans_lower = str(ans).lower().strip().rstrip(".!?")
                 for opt in options:
                     if isinstance(opt, (list, tuple)) and len(opt) >= 2:
-                        letter, text = str(opt[0]).lower(), str(opt[1]).lower()
-                        if ans_lower == text:
+                        letter = str(opt[0]).lower().strip()
+                        opt_text = str(opt[1]).lower().strip().rstrip(".!?")
+                        if _substring_safe_match(ans_lower, opt_text):
                             extra.add(letter)
                         elif ans_lower == letter:
-                            extra.add(text)
+                            extra.add(opt_text)
+            merged = list(dict.fromkeys([str(x).lower() for x in vals] + list(extra)))
+            normalized[k] = merged
+        elif q and q.get("type") == "binary_choice":
+            choices = q.get("choice_values") or []
+            vals = v if isinstance(v, list) else [v]
+            extra = set()
+            for ans in vals:
+                ans_lower = str(ans).lower().strip().rstrip(".!?")
+                for ch in choices:
+                    ch_lower = str(ch).lower().strip().rstrip(".!?")
+                    if _substring_safe_match(ans_lower, ch_lower):
+                        extra.add(ch_lower)
             merged = list(dict.fromkeys([str(x).lower() for x in vals] + list(extra)))
             normalized[k] = merged
         else:
             normalized[k] = v
     return normalized
+
+
+def _ensure_unique_block_nums(test_data: dict) -> dict:
+    """Renumber sections with duplicate or invalid block_nums to prevent form name collisions."""
+    seen = set()
+    next_num = 1
+    for sec in test_data.get("sections", []):
+        bn = sec.get("block_num")
+        if not isinstance(bn, int) or bn <= 0 or bn in seen:
+            while next_num in seen:
+                next_num += 1
+            sec["block_num"] = next_num
+            seen.add(next_num)
+            next_num += 1
+        else:
+            seen.add(bn)
+            next_num = max(next_num, bn + 1)
+    return test_data
 
 
 @router.post("/upload")
@@ -473,17 +514,19 @@ async def _upload_test_inner(request, test_file, answer_key_file):
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Could not parse test: {e} | {_tb.format_exc()[-400:]}")
 
+    # Ensure block_nums are unique (prevents form name collisions when AI duplicates)
+    test_data = _ensure_unique_block_nums(test_data)
+
     # Parse answer key if provided
     answer_key: dict = {}
     if answer_key_file and answer_key_file.filename:
         key_bytes = await answer_key_file.read()
         try:
-            answer_key = parse_answer_key(key_bytes, answer_key_file.filename, ai_client, model)
+            answer_key = parse_answer_key(key_bytes, answer_key_file.filename, ai_client, model, test_data=test_data)
         except Exception as e:
             raise HTTPException(status_code=422, detail=f"Could not parse answer key: {e} | {_tb.format_exc()[-400:]}")
 
-    # Normalize answer key: for multiple_choice questions, if key has text answer,
-    # also accept the matching letter (student submits "b", key may have "discovered")
+    # Normalize answer key: accept both letter and text forms for choice questions
     answer_key = _normalize_answer_key(answer_key, test_data)
 
     # Save to DB
@@ -506,12 +549,14 @@ async def _upload_test_inner(request, test_file, answer_key_file):
             test_data, validation = fix_and_revalidate(
                 test_data, answer_key, original_text, ai_client, model, max_rounds=3
             )
-            # Re-save test_data if fixes were applied
+            # Re-save test_data AND re-normalize answer_key if fixes were applied
+            # (fixes may have changed options/letters, invalidating prior normalization)
             if validation.get("fixes_applied"):
+                answer_key = _normalize_answer_key(answer_key, test_data)
                 db2 = get_db()
                 try:
-                    db2.execute("UPDATE tests SET test_data = ? WHERE id = ?",
-                                (json.dumps(test_data), test_id))
+                    db2.execute("UPDATE tests SET test_data = ?, answer_key = ? WHERE id = ?",
+                                (json.dumps(test_data), json.dumps(answer_key), test_id))
                     db2.commit()
                 finally:
                     db2.close()
@@ -544,6 +589,119 @@ async def list_tests(request: Request):
 
 class RenameRequest(BaseModel):
     title: str
+
+
+@router.get("/{test_id}/answer-key")
+async def get_answer_key(test_id: str, request: Request):
+    """Return the parsed answer key + test summary so the teacher can verify it before students take the test."""
+    user_id = _require_auth(request)
+    db = get_db()
+    try:
+        row = db.execute(
+            "SELECT test_data, answer_key FROM tests WHERE id = ? AND teacher_user_id = ?",
+            (test_id, user_id)
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        test_data = json.loads(row["test_data"])
+        answer_key = json.loads(row["answer_key"])
+        return {
+            "answer_key": answer_key,
+            "questions": [
+                {
+                    "key": f"s{sec['block_num']}_q{q['num']}",
+                    "block": sec.get("block_num"),
+                    "num": q.get("num"),
+                    "type": q.get("type"),
+                    "text": q.get("text", ""),
+                    "options": q.get("options"),
+                    "choice_values": q.get("choice_values"),
+                }
+                for sec in test_data.get("sections", [])
+                for q in sec.get("questions", [])
+                if q.get("type") not in ("essay",)
+            ],
+        }
+    finally:
+        db.close()
+
+
+class UpdateAnswerKeyRequest(BaseModel):
+    answer_key: Dict[str, Any]
+
+
+@router.put("/{test_id}/answer-key")
+async def update_answer_key(test_id: str, body: UpdateAnswerKeyRequest, request: Request):
+    """Replace the answer key for a test (teacher edits)."""
+    user_id = _require_auth(request)
+    db = get_db()
+    try:
+        row = db.execute("SELECT teacher_user_id, test_data FROM tests WHERE id = ?", (test_id,)).fetchone()
+        if not row or row["teacher_user_id"] != user_id:
+            raise HTTPException(status_code=404, detail="Not found")
+        test_data = json.loads(row["test_data"])
+        normalized = _normalize_answer_key(body.answer_key, test_data)
+        db.execute("UPDATE tests SET answer_key = ? WHERE id = ?", (json.dumps(normalized), test_id))
+        db.commit()
+        return {"ok": True, "answer_key": normalized}
+    finally:
+        db.close()
+
+
+class UpdateQuestionRequest(BaseModel):
+    text: Optional[str] = None
+    type: Optional[str] = None
+    options: Optional[Any] = None  # [[letter, text], ...]
+    choice_values: Optional[Any] = None  # ["a", "b"]
+    hint_letter: Optional[str] = None
+
+
+@router.patch("/{test_id}/question/{q_key}")
+async def update_question(test_id: str, q_key: str, body: UpdateQuestionRequest, request: Request):
+    """Edit a single question's fields. q_key is the form key like 's1_q2'."""
+    user_id = _require_auth(request)
+    db = get_db()
+    try:
+        row = db.execute("SELECT teacher_user_id, test_data, answer_key FROM tests WHERE id = ?", (test_id,)).fetchone()
+        if not row or row["teacher_user_id"] != user_id:
+            raise HTTPException(status_code=404, detail="Not found")
+        test_data = json.loads(row["test_data"])
+
+        # Find the question matching q_key (e.g. "s1_q2")
+        try:
+            block_part, q_part = q_key.split("_")
+            block_num = int(block_part[1:])
+            q_num = int(q_part[1:])
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"Invalid question key: {q_key}")
+
+        target = None
+        for sec in test_data.get("sections", []):
+            if sec.get("block_num") == block_num:
+                for q in sec.get("questions", []):
+                    if q.get("num") == q_num:
+                        target = q
+                        break
+        if target is None:
+            raise HTTPException(status_code=404, detail=f"Question {q_key} not found")
+
+        # Apply only the fields that were sent (None means "don't change")
+        updates = body.model_dump(exclude_unset=True)
+        for k, v in updates.items():
+            target[k] = v
+
+        # Re-normalize answer key since options may have changed
+        answer_key = json.loads(row["answer_key"])
+        answer_key = _normalize_answer_key(answer_key, test_data)
+
+        db.execute(
+            "UPDATE tests SET test_data = ?, answer_key = ? WHERE id = ?",
+            (json.dumps(test_data), json.dumps(answer_key), test_id)
+        )
+        db.commit()
+        return {"ok": True, "question": target, "answer_key": answer_key}
+    finally:
+        db.close()
 
 
 @router.patch("/{test_id}/title")

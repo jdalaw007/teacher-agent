@@ -100,7 +100,7 @@ Question type rules:
 - fill_in_blank_hint: text has a letter immediately before ________ (like "f________"). Extract hint_letter.
 - binary_choice: question ends with two options separated by " / " (like "prediction / plan"). Remove the options from text, put them in choice_values.
 - multiple_choice: TWO sub-cases:
-  (a) Inline slash options: a full sentence with choices separated by " / " embedded inside it (e.g. "He has hidden / discovered / stolen some treasure."). Set text to the full sentence with the slash group replaced by "________", put options as [["a","hidden"],["b","discovered"],["c","stolen"]].
+  (a) Inline slash options: a full sentence with 2 OR 3 choices separated by " / " embedded inside it. CRITICAL: Replace the entire slash-separated group in the text field with "________" and list EVERY option separately. Example: "He thought it was something very old / a piece of plastic / a valuable coin." → text: "He thought it was ________.", options: [["a","something very old"],["b","a piece of plastic"],["c","a valuable coin"]]. NEVER leave slashes in the text field.
   (b) Dialogue gap: a numbered gap [1] in a dialogue/paragraph, followed by "a X  b Y  c Z" options below. Set text to empty string, put options as [["a","X"],["b","Y"],["c","Z"]].
 - short_answer: reading comprehension question that asks "What/When/Where/Who/Why" and requires a full sentence answer.
 - essay: ONLY for genuinely free writing tasks where the student writes a full paragraph (60+ words). Clues: "Write X–Y words", "Write a review/email/paragraph/essay". Do NOT use essay for grammar exercises or sentence transformation tasks.
@@ -120,19 +120,50 @@ For word boxes (list of words to choose from), put them in word_box as an array.
 TEST TEXT:
 """
 
-ANSWER_KEY_PROMPT = """Parse this answer key and return ONLY valid JSON mapping question IDs to correct answers.
+ANSWER_KEY_PROMPT_TEMPLATE = """You have two documents: a PARSED TEST STRUCTURE and a raw ANSWER KEY document.
+Your job is to match the answers from the answer key to the correct question IDs in the test structure.
 
-Question IDs follow the pattern s{block_num}_q{question_num}.
-Example: section 1 question 1 = "s1_q1", section 8 question 3 = "s8_q3".
+Use the question text and options in the test structure to identify which answer in the key belongs to which question — do NOT rely solely on numbering, as the key may number exercises differently.
 
-For multiple choice, use the letter ("a", "b", or "c").
-For other questions, use an array of acceptable answers (lowercase, include variants).
-For essay/writing sections, skip them entirely.
+TEST STRUCTURE:
+{test_summary}
 
-Return format: {"s1_q1": ["bass"], "s1_q2": ["sister"], "s8_q1": ["b"], ...}
+RULES:
+- For multiple_choice questions: return the letter ("a", "b", or "c") that matches the correct option in the TEST STRUCTURE above.
+- For fill_in_blank / passive form / grammar: return an array of acceptable answers (lowercase). Use the exact form (e.g. ["are sold"], ["was found", "been found"]).
+- For short_answer (write a sentence): return the expected answer lowercase, without trailing punctuation.
+- For essay/free writing: skip entirely.
+- Word boxes and example answers in the key are NOT answers — ignore them.
+
+Return ONLY valid JSON: {{"s1_q1": ["b"], "s1_q2": ["c"], "s3_q1": ["are sold"], ...}}
 
 ANSWER KEY TEXT:
-"""
+{answer_key_text}"""
+
+
+def _build_test_summary(test_data: dict) -> str:
+    """Build a concise text summary of test questions for use in answer key parsing."""
+    lines = []
+    for sec in test_data.get("sections", []):
+        bn = sec.get("block_num", "?")
+        instr = sec.get("instruction", "")
+        lines.append(f"\nBlock {bn}: {instr}")
+        for q in sec.get("questions", []):
+            qtype = q.get("type", "")
+            if qtype in ("essay",):
+                continue
+            text = q.get("text", "")
+            opts = q.get("options") or []
+            choices = q.get("choice_values") or []
+            key = f"s{bn}_q{q['num']}"
+            if opts:
+                opt_str = ", ".join(f"{o[0]}) {o[1]}" for o in opts if isinstance(o, (list, tuple)) and len(o) >= 2)
+                lines.append(f"  {key} [{qtype}]: {text}  OPTIONS: {opt_str}")
+            elif choices:
+                lines.append(f"  {key} [{qtype}]: {text}  CHOICES: {' / '.join(choices)}")
+            else:
+                lines.append(f"  {key} [{qtype}]: {text}")
+    return "\n".join(lines)
 
 
 def _extract_first_json_object(text: str) -> str:
@@ -254,12 +285,25 @@ def parse_test(file_bytes: bytes, filename: str, ai_client, model: str) -> tuple
     return result, text
 
 
-def parse_answer_key(file_bytes: bytes, filename: str, ai_client, model: str) -> dict:
-    """Parse answer key file into {question_id: [answers]} mapping."""
+def parse_answer_key(file_bytes: bytes, filename: str, ai_client, model: str, test_data: dict = None) -> dict:
+    """Parse answer key file into {question_id: [answers]} mapping.
+    Pass test_data to enable cross-referencing against test questions for accurate block assignment.
+    """
+    test_summary = _build_test_summary(test_data) if test_data else ""
+    prompt = ANSWER_KEY_PROMPT_TEMPLATE.format(
+        test_summary=test_summary or "(not provided)",
+        answer_key_text="{answer_key_text}",  # placeholder replaced below
+    )
+
     fname = filename.lower()
     if fname.endswith(".pdf"):
         images = _pdf_to_b64_images(file_bytes, max_pages=6)
-        content = [{"type": "text", "text": ANSWER_KEY_PROMPT}]
+        # For PDFs: put the prompt + test summary as text, then append images
+        prompt_text = ANSWER_KEY_PROMPT_TEMPLATE.format(
+            test_summary=test_summary or "(not provided)",
+            answer_key_text="(shown in images below)",
+        )
+        content = [{"type": "text", "text": prompt_text}]
         for b64 in images:
             content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}", "detail": "high"}})
         response = ai_client.chat.completions.create(
@@ -268,10 +312,14 @@ def parse_answer_key(file_bytes: bytes, filename: str, ai_client, model: str) ->
             max_tokens=2000,
         )
     else:
-        text = extract_text(file_bytes, filename)
+        answer_key_text = extract_text(file_bytes, filename)
+        full_prompt = ANSWER_KEY_PROMPT_TEMPLATE.format(
+            test_summary=test_summary or "(not provided)",
+            answer_key_text=answer_key_text,
+        )
         response = ai_client.chat.completions.create(
             model=model,
-            messages=[{"role": "user", "content": ANSWER_KEY_PROMPT + text}],
+            messages=[{"role": "user", "content": full_prompt}],
             max_tokens=2000,
         )
     raw = (response.choices[0].message.content or "").strip()

@@ -230,6 +230,9 @@ export default function TestsPage() {
                 </button>
               </div>
               <div style={s.btnRow}>
+                <button style={s.editKeyBtn} onClick={() => router.push(`/tests/${test.id}/answer-key`)}>
+                  Edit answer key
+                </button>
                 <button style={s.resultsBtn} onClick={() => router.push(`/tests/${test.id}`)}>
                   View results
                 </button>
@@ -277,6 +280,7 @@ const s: Record<string, React.CSSProperties> = {
   copyBtn: { background: "#0066cc", color: "white", border: "none", padding: "4px 12px", borderRadius: 4, cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" },
   btnRow: { display: "flex", gap: 8 },
   resultsBtn: { background: "#28a745", color: "white", border: "none", padding: "5px 14px", borderRadius: 5, cursor: "pointer", fontSize: 13, fontWeight: "bold" },
+  editKeyBtn: { background: "#6f42c1", color: "white", border: "none", padding: "5px 14px", borderRadius: 5, cursor: "pointer", fontSize: 13, fontWeight: "bold" },
   deleteBtn: { background: "none", border: "1px solid #e44", color: "#c00", padding: "5px 12px", borderRadius: 5, cursor: "pointer", fontSize: 13 },
   link: { color: "#0066cc", textDecoration: "underline", cursor: "pointer" },
   valOk: { background: "#e6f9ee", border: "1px solid #28a745", borderRadius: 6, padding: "10px 14px", fontSize: 13, color: "#1a7a30", marginBottom: 10 },

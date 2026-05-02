@@ -46,10 +46,30 @@ function getCorrectAnswers(key: string, answerKey: Record<string, string | strin
   return [val.toLowerCase()];
 }
 
+function stripPunct(s: string): string {
+  // Includes ASCII + smart quotes + em/en dashes + non-breaking space
+  return s
+    .replace(/[.!?,;:'"‘’“”–—]/g, '')
+    .replace(/ /g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function checkAnswer(qKey: string, given: string, answerKey: Record<string, string | string[]>): boolean | null {
   const correct = getCorrectAnswers(qKey, answerKey);
   if (!correct) return null;
-  return correct.includes((given || "").toLowerCase().trim());
+  const givenNorm = stripPunct((given || "").toLowerCase().trim());
+  return correct.some(c => stripPunct(c) === givenNorm);
+}
+
+function displayCorrect(correct: string[]): string {
+  // Prefer the longest entry (usually the text label) over single letters (a/b/c).
+  // If the answer key has both ["b", "an archaeologist"], show "an archaeologist" not "b / an archaeologist".
+  if (correct.length === 0) return '';
+  const sorted = [...correct].sort((a, b) => b.length - a.length);
+  const best = sorted[0];
+  // If best is just a single letter and we have text alternatives, use text
+  return best.length > 1 ? best : correct.join(' / ');
 }
 
 function autoScore(answers: Record<string, string>, answerKey: Record<string, string | string[]>): number {
@@ -172,7 +192,10 @@ export default function TestResultsPage() {
               {` · Total: ${total} marks`}
             </p>
           </div>
-          <button style={s.printBtn} onClick={() => window.print()}>Print all answer sheets</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button style={s.editKeyBtn} onClick={() => router.push(`/tests/${testId}/answer-key`)}>Edit answer key</button>
+            <button style={s.printBtn} onClick={() => window.print()}>Print all answer sheets</button>
+          </div>
         </div>
 
         {/* Essay grading rubric */}
@@ -301,10 +324,10 @@ function StudentSheet({ sub, idx, total, sections, answerKey, aiGrades }: {
                     {given || <em style={{ color: "#aaa" }}>—</em>}
                   </span>
                   {result === false && correct && (
-                    <span style={s.keyHint}> → {correct.join(" / ")}</span>
+                    <span style={s.keyHint}> → {displayCorrect(correct)}</span>
                   )}
                   {result === null && correct && (
-                    <span style={s.keyHint}>(key: {correct.join(" / ")})</span>
+                    <span style={s.keyHint}>(key: {displayCorrect(correct)})</span>
                   )}
                 </div>
               );
@@ -330,6 +353,7 @@ const s: Record<string, React.CSSProperties> = {
   pageTitle: { margin: "0 0 4px", fontSize: 22 },
   subtitle: { margin: 0, color: "#555", fontSize: 13 },
   printBtn: { background: "#0066cc", color: "white", border: "none", padding: "10px 24px", borderRadius: 6, cursor: "pointer", fontWeight: "bold", fontSize: 14 },
+  editKeyBtn: { background: "#6f42c1", color: "white", border: "none", padding: "10px 24px", borderRadius: 6, cursor: "pointer", fontWeight: "bold", fontSize: 14 },
   rubricBox: { background: "white", border: "1px solid #ddd", borderRadius: 8, padding: "18px 22px", marginBottom: 28, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" },
   rubricHeader: { display: "flex", alignItems: "center", gap: 12, marginBottom: 8 },
   rubricLabel: { fontWeight: "bold", fontSize: 14 },

@@ -71,7 +71,7 @@ var submitted = false;
 
 function saveAnswers() {
   if (submitted) return;
-  const state = { name: document.getElementById('studentName').value };
+  const state = { name: document.getElementById('studentName').value, ts: Date.now() };
   document.getElementById('testForm').querySelectorAll('input[name], textarea[name]').forEach(el => {
     if (el.type === 'radio') { if (el.checked) state[el.name] = el.value; }
     else state[el.name] = el.value;
@@ -82,8 +82,13 @@ function saveAnswers() {
 function restoreAnswers() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return;
+    if (!raw) return false;
     const state = JSON.parse(raw);
+    // Discard saves older than 24 hours — prevents stale teacher test runs from leaking
+    if (state.ts && (Date.now() - state.ts) > 86400000) {
+      localStorage.removeItem(SAVE_KEY);
+      return false;
+    }
     if (state.name) document.getElementById('studentName').value = state.name;
     document.getElementById('testForm').querySelectorAll('input[name], textarea[name]').forEach(el => {
       const val = state[el.name];
@@ -91,14 +96,31 @@ function restoreAnswers() {
       if (el.type === 'radio') { el.checked = (el.value === val); }
       else el.value = val;
     });
-  } catch(e) {}
+    return true;
+  } catch(e) { return false; }
 }
 
-// Save on every change, restore on load
+// Show "Resume previous" prompt if a save was restored
+const restored = restoreAnswers();
+if (restored) {
+  const banner = document.createElement('div');
+  banner.style.cssText = 'background:#fff8e1;border:1px solid #ffc107;border-radius:6px;padding:10px 14px;margin:0 0 16px;font-size:13px;color:#7a5800;display:flex;justify-content:space-between;align-items:center;';
+  banner.innerHTML = '<span>&#128221; Previous answers restored from this browser. <strong>Click "Start fresh" if this is a new attempt.</strong></span>' +
+    '<button type="button" style="background:#c00;color:white;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:bold;">Start fresh</button>';
+  banner.querySelector('button').onclick = function() {
+    if (confirm('Clear all answers and start over?')) {
+      try { localStorage.removeItem(SAVE_KEY); } catch(e) {}
+      window.location.reload();
+    }
+  };
+  const form = document.getElementById('testForm');
+  form.parentNode.insertBefore(banner, form);
+}
+
+// Save on every change
 document.getElementById('testForm').addEventListener('input', saveAnswers);
 document.getElementById('testForm').addEventListener('change', saveAnswers);
 document.getElementById('studentName').addEventListener('input', saveAnswers);
-restoreAnswers();
 
 // ── Warn before closing if not submitted ─────────────────────────────────────
 window.addEventListener('beforeunload', function(e) {
@@ -187,7 +209,24 @@ def _render_question(q: dict, block_num: int) -> str:
         return f'<div class="q">{q["num"]}. {filled}</div>'
 
     elif qtype == "binary_choice":
-        choices = q.get("choice_values") or ["option1", "option2"]
+        choices = q.get("choice_values") or []
+        # Fallback: AI failed to extract choice_values — parse from slash-separated text
+        if not choices and " / " in text:
+            parts = [c.strip().rstrip('.!?') for c in text.split(' / ')]
+            # Keep the prefix (everything before the first option) as the question text
+            if len(parts) >= 2:
+                # Heuristic: the first part contains the question stem; later parts are options
+                # Take the trailing word(s) from parts[0] as the first option
+                first_words = parts[0].split()
+                if len(first_words) > 3:
+                    # Question stem ends earlier; last word/phrase is option 1
+                    choices = [first_words[-1]] + parts[1:]
+                    text = " ".join(first_words[:-1])
+                else:
+                    choices = parts
+                    text = ""
+        if not choices:
+            choices = ["option1", "option2"]
         radios = '<div class="radio-row">'
         for i, val in enumerate(choices):
             v = html_lib.escape(val)
@@ -199,6 +238,11 @@ def _render_question(q: dict, block_num: int) -> str:
 
     elif qtype == "multiple_choice":
         options = q.get("options") or []
+        # Fallback: AI failed to extract options — parse them from slash-separated text
+        if not options and " / " in text:
+            raw = [c.strip().rstrip('.!?') for c in text.split(' / ')]
+            options = [[chr(ord('a') + i), c] for i, c in enumerate(raw)]
+            text = "________"
         radios = '<div class="options-row">'
         for opt in options:
             if isinstance(opt, (list, tuple)) and len(opt) >= 2:
