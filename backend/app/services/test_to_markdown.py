@@ -128,7 +128,15 @@ QUESTION TYPES:
 
   Short answer (full sentence answer to a reading question):
       1. When did Zara start piano?   = at age five, when she was five
-      Comma-separated alternatives are all accepted.
+      Use commas to separate alternative accepted answers. The parser also
+      accepts ' / ' as a separator, but commas are preferred.
+
+  Sentence-construction questions (e.g. "Write passive questions" — student
+  builds a sentence from prompts):
+      1. where / those old coins / discover / ?   = where were those old coins discovered, where were those old coins discovered?
+      Always include BOTH the present-tense and past-tense forms, AND singular
+      and plural forms ("it"/"they") when both are grammatically valid for the
+      prompt. The student may write any valid form — accept all of them.
 
   Tick (multi-select):
       1. Tick the adjectives you hear.

@@ -96,12 +96,20 @@ HINT_LETTER_RE = re.compile(r"\b([a-zA-Z])(_{3,})")  # like f________ or o___
 PLAIN_BLANK_RE = re.compile(r"_{3,}")
 
 
+def _split_alternatives(s: str) -> list[str]:
+    """Split an answer string into alternatives. Accepts both ',' and ' / ' as
+    separators (AI naturally writes 'hasn't seen / hasn't visited'). Slashes WITHOUT
+    surrounding spaces are preserved (so 'and/or', '1/2' stay as one answer)."""
+    parts = re.split(r',|\s+/\s+', s)
+    return [p.strip() for p in parts if p.strip()]
+
+
 def _strip_inline_answer(text: str) -> Tuple[str, Optional[list[str]]]:
     """If text ends with ' = answer1, answer2', strip and return parts."""
     m = INLINE_ANSWER_RE.search(text)
     if not m:
         return text, None
-    answers = [a.strip() for a in m.group(1).split(",") if a.strip()]
+    answers = _split_alternatives(m.group(1))
     return text[:m.start()].rstrip(), answers
 
 
@@ -359,7 +367,7 @@ def markdown_to_test_data(markdown: str) -> dict:
         # Standalone answer line ("= answer")
         m = ANSWER_LINE_RE.match(stripped)
         if m and cur_q is not None:
-            cur_q_explicit_answer = [a.strip() for a in m.group(1).split(",") if a.strip()]
+            cur_q_explicit_answer = _split_alternatives(m.group(1))
             continue
 
         # Option line ("- *a) text")

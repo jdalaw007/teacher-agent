@@ -247,6 +247,22 @@ B: That [2] be great.
     assert out["answer_key"]["s1_q2"] == ["a"]
 
 
+def test_slash_separated_alternatives():
+    """AI often writes alternatives with ' / ' instead of ','. Both must work."""
+    md = """## 1. Reading (3 marks)
+> Complete the sentences.
+
+1. David ________ the new pool.   = hasn't seen / hasn't visited
+2. The shop sells ________.   = books, magazines
+3. Use and/or correctly.   = and/or
+"""
+    out = markdown_to_test_data(md)
+    assert out["answer_key"]["s1_q1"] == ["hasn't seen", "hasn't visited"]
+    assert out["answer_key"]["s1_q2"] == ["books", "magazines"]
+    # 'and/or' has no surrounding spaces — should NOT be split
+    assert out["answer_key"]["s1_q3"] == ["and/or"]
+
+
 def test_real_basic_test_excerpt():
     """Realistic excerpt from the English Plus Unit 1 Basic test."""
     md = """## 1. Listening (5 marks)
