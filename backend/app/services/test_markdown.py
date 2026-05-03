@@ -154,8 +154,21 @@ def _detect_question_type(q_text: str) -> Tuple[str, Optional[str]]:
 
 
 def _normalize_blanks(text: str) -> str:
-    """Replace runs of 3+ underscores with exactly 8 underscores for consistent rendering."""
+    """Normalise blanks for consistent rendering:
+       - Collapse adjacent blanks (`________ ________`) into a single one. This
+         catches the AI mistake of splitting a multi-word answer like "have seen"
+         into two separate input fields.
+       - Then replace any remaining run of 3+ underscores with exactly 8.
+    """
+    text = re.sub(r'_{3,}(\s+_{3,})+', '________', text)
     return PLAIN_BLANK_RE.sub("________", text)
+
+
+def _strip_hint_letter(text: str) -> str:
+    """For fill_in_blank_hint, the hint letter is rendered as a styled badge by the
+    HTML layer, so strip it from the text to avoid duplication. 'f________' -> '________'.
+    """
+    return re.sub(r'\b([a-zA-Z])(_{3,})', r'\2', text)
 
 
 def _strip_essay_marker(text: str) -> str:
@@ -208,10 +221,12 @@ def markdown_to_test_data(markdown: str) -> dict:
         elif cur_q_explicit_answer is not None:
             answer_key[qid] = cur_q_explicit_answer
 
-        # Clean question text: normalize blanks, strip essay marker
+        # Clean question text: normalize blanks, strip essay marker, strip hint letter
         if cur_q.get("text"):
             cur_q["text"] = _strip_essay_marker(cur_q["text"])
             cur_q["text"] = _normalize_blanks(cur_q["text"])
+            if qtype == "fill_in_blank_hint":
+                cur_q["text"] = _strip_hint_letter(cur_q["text"])
 
         cur_sec["questions"].append(cur_q)
         cur_q = None

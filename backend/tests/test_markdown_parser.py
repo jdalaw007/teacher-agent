@@ -190,7 +190,9 @@ def test_multiline_question_text():
     out = markdown_to_test_data(md)
     q = out["test_data"]["sections"][0]["questions"][0]
     assert "shops" in q["text"]
-    assert "f________" in q["text"]
+    # The 'f' hint letter is now stripped from text and stored on hint_letter
+    assert "________" in q["text"]
+    assert q["hint_letter"] == "f"
     assert out["answer_key"]["s1_q1"] == ["fun", "fantastic"]
 
 
@@ -245,6 +247,36 @@ B: That [2] be great.
     assert len(sec["questions"]) == 2
     assert out["answer_key"]["s1_q1"] == ["b"]
     assert out["answer_key"]["s1_q2"] == ["a"]
+
+
+def test_collapse_adjacent_blanks():
+    """AI sometimes writes ________ ________ for multi-word answers — collapse to one."""
+    md = """## 1. Grammar (2 marks)
+
+1. She ________ ________ the new pool.   = hasn't seen
+2. He has ________. She has ________.    = read
+"""
+    out = markdown_to_test_data(md)
+    qs = out["test_data"]["sections"][0]["questions"]
+    # Adjacent blanks collapsed
+    assert qs[0]["text"].count("________") == 1, f"Expected 1 blank, got: {qs[0]['text']}"
+    # Non-adjacent (separated by sentence) NOT collapsed
+    assert qs[1]["text"].count("________") == 2
+
+
+def test_hint_letter_stripped_from_text():
+    """fill_in_blank_hint text should not contain the hint letter — it's rendered as a badge."""
+    md = """## 1. Vocabulary (2 marks)
+
+1. Joe is a big f________ of metal.   = fan
+"""
+    out = markdown_to_test_data(md)
+    q = out["test_data"]["sections"][0]["questions"][0]
+    assert q["type"] == "fill_in_blank_hint"
+    assert q["hint_letter"] == "f"
+    # 'f' is gone from the text — the renderer adds it via hint span
+    assert "f________" not in q["text"]
+    assert "________" in q["text"]
 
 
 def test_slash_separated_alternatives():

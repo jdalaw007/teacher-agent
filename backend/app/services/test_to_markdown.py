@@ -112,6 +112,14 @@ QUESTION TYPES:
   Fill-in-blank (plain gap):
       1. She lives in ________.   = manchester
 
+  ONE BLANK PER QUESTION: A single ________ represents one input field. Multi-word
+  answers like "have seen" or "is going to" go in ONE blank. Do NOT write
+  "________ ________" for a multi-word answer — only the first input is captured
+  and the second word is lost.
+
+  Wrong:  1. By next year I ________ ________ all the books.   = will have read
+  Right:  1. By next year I ________ all the books.            = will have read
+
   Letter pattern (e.g. "old - o___r" with answer "older"):
       1. old - o___r   = older
       Preserve the publisher's pattern in question text. The answer (after =) is the full word.
