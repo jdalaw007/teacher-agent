@@ -52,6 +52,7 @@ Rules:
     tick               (multi-select checkboxes)
     match              ("Match 1-5 with a-e" exercises)
 - expected_count is your best guess at how many numbered questions the block has.
+- For a single PARAGRAPH WITH MULTIPLE NUMBERED BLANKS (e.g. "It 1____ like London, but I'm not 2____. By 3____, ...") expected_count is the NUMBER OF NUMBERED BLANKS, not the number of sentences. Each gap counts as one question.
 - DO NOT skip blocks. If the document has 8 numbered exercises, return 8 blocks.
 - DO NOT split a single exercise into two blocks.
 - If a section has a Speaking part that is teacher-graded (in person), include it but mark expected_type as "essay" (we treat it as ungraded text).
@@ -71,10 +72,36 @@ MARKDOWN_SPEC = """OUR MARKDOWN SPEC (return ONLY this format, nothing else):
 [wordbox] word1, word2, word3       # optional, only if there's a word box
 [example] An example sentence.      # optional, only if document has an example
 
-[passage] ... [/passage]            # multi-line reading passage (only if section has one)
-[dialogue] ... [/dialogue]          # multi-line dialogue (only if section has one)
+[passage] ... [/passage]            # READING PASSAGE — see CRITICAL note below
+[dialogue] ... [/dialogue]          # multi-line dialogue OR shared paragraph with
+                                    # multiple numbered blanks (see PATTERN below)
 [guide] ... [/guide]                # writing-guide bullet points (only for writing tasks)
 [match] ... [/match]                # see below
+
+CRITICAL — when a block has a reading passage:
+  Copy the FULL passage text VERBATIM from the document inside [passage]...[/passage].
+  Do NOT summarise, paraphrase, shorten, or omit the passage. Include every sentence,
+  even if long. The passage is what students read — they cannot answer without it.
+
+PATTERN — paragraph with multiple numbered blanks:
+  Some sections have a single paragraph containing multiple numbered gaps, e.g.:
+    "It 1l_____ like London, but I'm not 2s_____. By 3c_____, the second picture
+     shows a small town."
+  Each numbered gap is its own question. Do NOT collapse multiple gaps into one
+  question. Express it like this:
+
+    [dialogue]
+    It 1l________ like London, but I'm not 2s________. By 3c________, the second
+    picture shows a small town.
+    [/dialogue]
+
+    1. l________   = looks
+    2. s________   = sure
+    3. c________   = contrast
+
+  The shared paragraph goes inside [dialogue] (preserve the numbers and hint
+  letters). Then list ONE fill_in_blank_hint question per numbered gap.
+  The number of questions MUST equal the number of marks/gaps in the paragraph.
 
 QUESTION TYPES:
 
@@ -145,6 +172,8 @@ TARGET BLOCK:
 The full test document is provided so you can find this block. Locate exercise number {block_num} ("{section_title}") in the document and convert ONLY that block to markdown. Do NOT include other blocks.
 
 Use the EXACT block_num, section_title, and marks given above in the `## N. Title (M marks)` header.
+
+COUNT CHECK: This block expects {expected_count} questions. After writing your markdown, count the numbered questions you produced. If the count does not match, you have either missed gaps (likely in a multi-blank paragraph — see the PATTERN above) or merged questions that should be separate. Fix it before returning.
 
 If the block's questions cannot all be expressed in our spec (e.g. they require open-ended sentence writing that has no fixed answer), use [essay] for those questions.
 
