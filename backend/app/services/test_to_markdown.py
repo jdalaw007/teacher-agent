@@ -157,7 +157,7 @@ CRITICAL RULES:
 """
 
 
-BLOCK_PROMPT = """You are converting ONE section of an English test to our markdown spec. Output ONLY the markdown for this single block.
+BLOCK_PROMPT_BASE = """You are converting ONE section of an English test to our markdown spec. Output ONLY the markdown for this single block.
 
 TARGET BLOCK:
 - block_num: {block_num}
@@ -169,16 +169,31 @@ TARGET BLOCK:
 
 {spec}
 
-The full test document is provided so you can find this block. Locate exercise number {block_num} ("{section_title}") in the document and convert ONLY that block to markdown. Do NOT include other blocks.
+The test document is provided so you can find this block. Locate exercise number {block_num} ("{section_title}") in the document and convert ONLY that block to markdown. Do NOT include other blocks.
 
 Use the EXACT block_num, section_title, and marks given above in the `## N. Title (M marks)` header.
 
 COUNT CHECK: This block expects {expected_count} questions. After writing your markdown, count the numbered questions you produced. If the count does not match, you have either missed gaps (likely in a multi-blank paragraph — see the PATTERN above) or merged questions that should be separate. Fix it before returning.
 
 If the block's questions cannot all be expressed in our spec (e.g. they require open-ended sentence writing that has no fixed answer), use [essay] for those questions.
-
-TEST DOCUMENT:
 """
+
+ANSWER_KEY_INSTRUCTIONS = """
+ANSWER KEY: An OFFICIAL answer key is also provided. For every objective question
+in this block, find the corresponding answer in the key and mark it correctly:
+  - For multiple_choice: the * goes on the option matching the key
+  - For binary_choice:   the * goes on the option matching the key
+  - For tick:            * marks every item that the key says to tick
+  - For fill-in / short-answer: use = answer (include alternatives from the key
+                                 separated by commas)
+  - For match:           the right-hand text after = comes from the key
+
+Trust the key over your own guesses. The key uses the same exercise/question
+numbers as the test, so block {block_num} answers correspond to this block.
+"""
+
+BLOCK_PROMPT_NO_KEY = BLOCK_PROMPT_BASE + "\nTEST DOCUMENT:\n"
+BLOCK_PROMPT_WITH_KEY = BLOCK_PROMPT_BASE + ANSWER_KEY_INSTRUCTIONS + "\nTEST DOCUMENT (first), then ANSWER KEY (second):\n"
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -237,9 +252,14 @@ def extract_outline(file_bytes: bytes, filename: str, ai_client, model: str) -> 
 
 
 def block_to_markdown(file_bytes: bytes, filename: str, outline_block: dict,
-                     ai_client, model: str) -> str:
-    """Generate markdown for a single block, using the rest of the document as context."""
-    prompt = BLOCK_PROMPT.format(
+                     ai_client, model: str,
+                     answer_key_bytes: Optional[bytes] = None,
+                     answer_key_filename: Optional[str] = None) -> str:
+    """Generate markdown for a single block, using the rest of the document as context.
+    Optionally pass an answer key file — the AI uses it to mark correct answers.
+    """
+    template = BLOCK_PROMPT_WITH_KEY if answer_key_bytes else BLOCK_PROMPT_NO_KEY
+    prompt = template.format(
         block_num=outline_block.get("block_num"),
         section_title=outline_block.get("section_title", ""),
         marks=outline_block.get("marks", 0),
@@ -249,13 +269,36 @@ def block_to_markdown(file_bytes: bytes, filename: str, outline_block: dict,
         spec=MARKDOWN_SPEC,
     )
 
-    fname = filename.lower()
-    if fname.endswith(".pdf"):
-        content = _build_content_for_pdf(file_bytes, prompt)
+    test_is_pdf = filename.lower().endswith(".pdf")
+    key_is_pdf = bool(answer_key_filename and answer_key_filename.lower().endswith(".pdf"))
+
+    # Build the message content. If either file is a PDF, we need multimodal content.
+    if test_is_pdf or key_is_pdf:
+        content: list = [{"type": "text", "text": prompt}]
+        if test_is_pdf:
+            for img in _pdf_to_b64_images(file_bytes, max_pages=12):
+                content.append({"type": "image_url",
+                                "image_url": {"url": f"data:image/png;base64,{img}", "detail": "high"}})
+        else:
+            content.append({"type": "text", "text": "TEST TEXT:\n" + extract_text(file_bytes, filename)})
+        if answer_key_bytes:
+            content.append({"type": "text", "text": "\n--- ANSWER KEY BELOW ---\n"})
+            if key_is_pdf:
+                for img in _pdf_to_b64_images(answer_key_bytes, max_pages=8):
+                    content.append({"type": "image_url",
+                                    "image_url": {"url": f"data:image/png;base64,{img}", "detail": "high"}})
+            else:
+                content.append({"type": "text",
+                                "text": "ANSWER KEY TEXT:\n" + extract_text(answer_key_bytes, answer_key_filename)})
         messages = [{"role": "user", "content": content}]
     else:
-        text = extract_text(file_bytes, filename)
-        messages = [{"role": "user", "content": prompt + text}]
+        # All text — single string is fine
+        text_test = extract_text(file_bytes, filename)
+        full = prompt + "\nTEST TEXT:\n" + text_test
+        if answer_key_bytes:
+            text_key = extract_text(answer_key_bytes, answer_key_filename)
+            full += "\n\nANSWER KEY TEXT:\n" + text_key
+        messages = [{"role": "user", "content": full}]
 
     response = ai_client.chat.completions.create(
         model=model,
@@ -272,17 +315,21 @@ def block_to_markdown(file_bytes: bytes, filename: str, outline_block: dict,
 
 
 def extract_to_markdown(file_bytes: bytes, filename: str, ai_client, model: str,
-                       progress_cb: Optional[callable] = None) -> dict:
+                       progress_cb: Optional[callable] = None,
+                       answer_key_bytes: Optional[bytes] = None,
+                       answer_key_filename: Optional[str] = None) -> dict:
     """
     Convert a test document end-to-end into our markdown format.
     Returns {"markdown": str, "outline": dict, "errors": [str]}.
 
     progress_cb (optional): called as progress_cb(stage, current, total) so the
     caller can stream UI updates.
+    answer_key_bytes (optional): if provided, AI uses the official key to mark
+    correct answers instead of guessing.
     """
     errors: list[str] = []
 
-    # Pass 1
+    # Pass 1 — outline only needs the test, never the key
     if progress_cb:
         progress_cb("outline", 0, 1)
     outline = extract_outline(file_bytes, filename, ai_client, model)
@@ -298,7 +345,11 @@ def extract_to_markdown(file_bytes: bytes, filename: str, ai_client, model: str,
         if progress_cb:
             progress_cb("block", i, len(blocks))
         try:
-            md = block_to_markdown(file_bytes, filename, block, ai_client, model)
+            md = block_to_markdown(
+                file_bytes, filename, block, ai_client, model,
+                answer_key_bytes=answer_key_bytes,
+                answer_key_filename=answer_key_filename,
+            )
             block_markdowns.append(md)
         except Exception as e:
             errors.append(f"Block {block.get('block_num')}: {e}")

@@ -598,8 +598,14 @@ async def _upload_test_inner(request, test_file, answer_key_file):
 
 
 @router.post("/parse-to-markdown")
-async def parse_to_markdown(request: Request, test_file: UploadFile = File(...)):
+async def parse_to_markdown(
+    request: Request,
+    test_file: UploadFile = File(...),
+    answer_key_file: Optional[UploadFile] = File(None),
+):
     """Run the two-pass AI extractor: outline -> per-block markdown.
+    If an answer_key_file is provided, the AI uses it to mark correct answers
+    instead of guessing.
     Returns the full markdown, the outline, and any per-block errors so the
     teacher can review and fix before creating the test.
     """
@@ -612,8 +618,18 @@ async def parse_to_markdown(request: Request, test_file: UploadFile = File(...))
     file_bytes = await test_file.read()
     filename = test_file.filename or "test.txt"
 
+    key_bytes: Optional[bytes] = None
+    key_name: Optional[str] = None
+    if answer_key_file and answer_key_file.filename:
+        key_bytes = await answer_key_file.read()
+        key_name = answer_key_file.filename
+
     try:
-        result = extract_to_markdown(file_bytes, filename, ai_client, model)
+        result = extract_to_markdown(
+            file_bytes, filename, ai_client, model,
+            answer_key_bytes=key_bytes,
+            answer_key_filename=key_name,
+        )
     except Exception as e:
         import traceback
         raise HTTPException(
@@ -625,6 +641,7 @@ async def parse_to_markdown(request: Request, test_file: UploadFile = File(...))
         "markdown": result["markdown"],
         "outline": result["outline"],
         "errors": result["errors"],
+        "used_answer_key": key_bytes is not None,
     }
 
 

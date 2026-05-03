@@ -24,6 +24,7 @@ export default function TestsPage() {
   const [renamingId, setRenamingId] = useState("");
   const [renameValue, setRenameValue] = useState("");
   const testFileRef = useRef<HTMLInputElement>(null);
+  const keyFileRef = useRef<HTMLInputElement>(null);
   const [markdown, setMarkdown] = useState("");
   const [mdTitle, setMdTitle] = useState("");
   const [mdSubmitting, setMdSubmitting] = useState(false);
@@ -60,6 +61,8 @@ export default function TestsPage() {
 
     const formData = new FormData();
     formData.append("test_file", testFile);
+    const keyFile = keyFileRef.current?.files?.[0];
+    if (keyFile) formData.append("answer_key_file", keyFile);
 
     try {
       const r = await fetch(`${API_URL}/test/parse-to-markdown`, {
@@ -77,13 +80,15 @@ export default function TestsPage() {
       setMdShown(true);
       const blockCount = data.outline?.blocks?.length || 0;
       const errCount = (data.errors || []).length;
+      const keyTag = data.used_answer_key ? " (using your answer key)" : "";
       if (errCount === 0) {
-        setUploadMsg(`AI extracted ${blockCount} block${blockCount !== 1 ? "s" : ""}. Review the markdown below, then click "Create test from markdown".`);
+        setUploadMsg(`AI extracted ${blockCount} block${blockCount !== 1 ? "s" : ""}${keyTag}. Review the markdown below, then click "Create test from markdown".`);
       } else {
-        setUploadMsg(`AI extracted ${blockCount - errCount}/${blockCount} blocks (${errCount} failed). Review and fix the markdown below before creating the test.`);
+        setUploadMsg(`AI extracted ${blockCount - errCount}/${blockCount} blocks (${errCount} failed)${keyTag}. Review and fix the markdown below before creating the test.`);
         setUploadErr(`Errors: ${(data.errors || []).join("; ")}`);
       }
       if (testFileRef.current) testFileRef.current.value = "";
+      if (keyFileRef.current) keyFileRef.current.value = "";
       // Scroll to the markdown editor
       setTimeout(() => {
         document.getElementById("markdown-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -185,15 +190,21 @@ export default function TestsPage() {
           get corrected before students see it.
         </p>
 
-        <div style={s.fileGroup}>
-          <label style={s.label}>Test document <span style={s.required}>*</span></label>
-          <input ref={testFileRef} type="file" accept=".pdf,.txt,.doc,.docx" style={s.fileInput} />
-          <p style={{ fontSize: 12, color: "#888", margin: "6px 0 0" }}>
-            Answer key is no longer a separate file — mark correct answers inline in the markdown
-            (with <code>*</code> on options or <code>= answer</code> on fill-ins). The AI does this for you;
-            you just verify.
-          </p>
+        <div style={s.fileRow}>
+          <div style={s.fileGroup}>
+            <label style={s.label}>Test document <span style={s.required}>*</span></label>
+            <input ref={testFileRef} type="file" accept=".pdf,.txt,.doc,.docx" style={s.fileInput} />
+          </div>
+          <div style={s.fileGroup}>
+            <label style={s.label}>Answer key <span style={s.optional}>(strongly recommended)</span></label>
+            <input ref={keyFileRef} type="file" accept=".pdf,.txt,.doc,.docx" style={s.fileInput} />
+          </div>
         </div>
+        <p style={{ fontSize: 12, color: "#888", margin: "6px 0 14px" }}>
+          With the answer key, the AI marks correct answers using the official key instead of
+          guessing. Without it, the AI takes the test like a smart student — works for grammar,
+          fails for listening. Either way, you review the markdown before students see anything.
+        </p>
 
         {uploadErr && <div style={s.errMsg}>{uploadErr}</div>}
         {uploadMsg && <div style={s.okMsg}>{uploadMsg}</div>}
