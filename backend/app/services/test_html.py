@@ -137,6 +137,42 @@ window.addEventListener('beforeunload', function(e) {
   e.returnValue = '';
 });
 
+// ── Block paste / drop / right-click in answer fields ────────────────────────
+// Goal: stop students from pasting AI-generated answers from ChatGPT etc.
+// Only blocks the answer form — the student-name field outside it is unaffected.
+function showAntiPasteToast(msg) {
+  let toast = document.getElementById('antiPasteToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'antiPasteToast';
+    toast.style.cssText = 'position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:#c00;color:white;padding:12px 22px;border-radius:6px;font-size:14px;font-weight:bold;z-index:9999;box-shadow:0 4px 14px rgba(0,0,0,0.25);transition:opacity 0.25s;pointer-events:none;';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.style.opacity = '1';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { toast.style.opacity = '0'; }, 2200);
+}
+
+(function () {
+  const form = document.getElementById('testForm');
+  form.addEventListener('paste', function (e) {
+    e.preventDefault();
+    showAntiPasteToast('Pasting is disabled — please type your answers.');
+  });
+  form.addEventListener('drop', function (e) {
+    e.preventDefault();
+    showAntiPasteToast('Drag-and-drop is disabled.');
+  });
+  form.addEventListener('dragover', function (e) { e.preventDefault(); });
+  form.addEventListener('contextmenu', function (e) {
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) {
+      e.preventDefault();
+    }
+  });
+})();
+
 // ── Submit ────────────────────────────────────────────────────────────────────
 function submitTest() {
   const name = document.getElementById('studentName').value.trim();
