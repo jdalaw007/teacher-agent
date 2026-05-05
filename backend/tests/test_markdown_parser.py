@@ -369,6 +369,93 @@ def test_real_basic_test_excerpt():
     assert out["answer_key"]["s3_q3"] == ["any"]
 
 
+def test_round_trip_full_example():
+    """parse(serialize(parse(md))) == parse(md). All question types covered."""
+    from app.services.test_markdown import test_data_to_markdown
+    md_in = """# Round Trip Test
+
+## 1. Listening (5 marks)
+> Tick the adjectives you hear.
+[audio 1.02]
+
+1.
+   [ ] small *
+   [ ] friendly *
+   [ ] dirty
+   [ ] modern *
+
+## 2. Vocabulary (5 marks)
+> Complete the sentences.
+[wordbox] fan, band, tone
+
+1. Joe is a big f________ of metal.   = fan
+2. Kate plays in a b________.   = band
+
+## 3. Grammar (3 marks)
+
+1. (*There's / are) two theatres.
+2. He has ________.
+   - a) hidden
+   - *b) discovered
+   - c) stolen
+3. old - o___r   = older
+
+## 4. Reading (4 marks)
+> Read and answer.
+[passage]
+Zara is a young musician from Manchester.
+She started piano at age five.
+[/passage]
+
+1. Where is Zara from?   = manchester
+2. When did she start piano?   = age five, when she was five
+
+## 5. Match (3 marks)
+> Match 1-3 with a-c.
+[match]
+- We play basketball there. = sports centre
+- Trains go from there. = train station
+- We have coffee there. = café
+[/match]
+
+## 6. Writing (10 marks)
+> Write 60-80 words about your school.
+[guide]
+Paragraph 1: What's it called?
+Paragraph 2: What's special about it?
+[/guide]
+
+1. [essay]
+"""
+    parsed_first = markdown_to_test_data(md_in)
+    md_out = test_data_to_markdown(parsed_first["test_data"], parsed_first["answer_key"])
+    parsed_second = markdown_to_test_data(md_out)
+
+    # Both passes must produce the same data
+    assert parsed_first["test_data"]["title"] == parsed_second["test_data"]["title"]
+    assert len(parsed_first["test_data"]["sections"]) == len(parsed_second["test_data"]["sections"])
+
+    for s1, s2 in zip(parsed_first["test_data"]["sections"], parsed_second["test_data"]["sections"]):
+        assert s1["block_num"] == s2["block_num"], f"block_num mismatch: {s1['block_num']} vs {s2['block_num']}"
+        assert s1["section_title"] == s2["section_title"]
+        assert s1["marks"] == s2["marks"]
+        assert s1.get("instruction", "") == s2.get("instruction", "")
+        assert len(s1["questions"]) == len(s2["questions"]), f"question count mismatch in block {s1['block_num']}"
+        for q1, q2 in zip(s1["questions"], s2["questions"]):
+            assert q1["type"] == q2["type"], f"type mismatch in {s1['block_num']}/{q1['num']}: {q1['type']} vs {q2['type']}"
+            assert q1["num"] == q2["num"]
+
+    # Answer keys should match (sorted, since order may differ)
+    for k in parsed_first["answer_key"]:
+        ak1 = parsed_first["answer_key"][k]
+        ak2 = parsed_second["answer_key"].get(k)
+        assert ak2 is not None, f"answer key {k} missing after round-trip"
+        # Compare as sets (order-insensitive) for list answers
+        if isinstance(ak1, list):
+            assert sorted(str(x).lower() for x in ak1) == sorted(str(x).lower() for x in ak2), \
+                f"answer key {k} differs: {ak1} vs {ak2}"
+
+
 if __name__ == "__main__":
     import traceback
     tests = [v for k, v in list(globals().items()) if k.startswith("test_") and callable(v)]

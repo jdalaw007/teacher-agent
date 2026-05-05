@@ -8,7 +8,7 @@ from app.services.database import get_db
 from app.services.token_store import get_user_id_from_token
 from app.services.test_html import generate_test_html
 from app.services.test_parser import parse_test, parse_answer_key
-from app.services.test_markdown import markdown_to_test_data
+from app.services.test_markdown import markdown_to_test_data, test_data_to_markdown
 from app.services.test_to_markdown import extract_to_markdown
 from app.services.test_validator import fix_and_revalidate
 from app.services.profile import get_ai_client
@@ -716,6 +716,70 @@ async def list_tests(request: Request):
 
 class RenameRequest(BaseModel):
     title: str
+
+
+@router.get("/{test_id}/markdown")
+async def get_test_markdown(test_id: str, request: Request):
+    """Return the current test serialized as markdown for round-trip editing."""
+    user_id = _require_auth(request)
+    db = get_db()
+    try:
+        row = db.execute(
+            "SELECT test_data, answer_key FROM tests WHERE id = ? AND teacher_user_id = ?",
+            (test_id, user_id)
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        test_data = json.loads(row["test_data"])
+        answer_key = json.loads(row["answer_key"]) if row["answer_key"] else {}
+        return {"markdown": test_data_to_markdown(test_data, answer_key)}
+    finally:
+        db.close()
+
+
+class UpdateMarkdownRequest(BaseModel):
+    markdown: str
+
+
+@router.put("/{test_id}/markdown")
+async def update_test_markdown(test_id: str, body: UpdateMarkdownRequest, request: Request):
+    """Replace the test's data and answer key by parsing edited markdown."""
+    user_id = _require_auth(request)
+
+    if not body.markdown.strip():
+        raise HTTPException(status_code=400, detail="Markdown cannot be empty")
+
+    try:
+        parsed = markdown_to_test_data(body.markdown)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Could not parse markdown: {e}")
+
+    test_data = parsed["test_data"]
+    answer_key = parsed["answer_key"]
+
+    test_data = _ensure_unique_block_nums(test_data)
+    answer_key = _normalize_answer_key(answer_key, test_data)
+
+    if not test_data.get("sections"):
+        raise HTTPException(status_code=422, detail="No sections found in markdown")
+
+    db = get_db()
+    try:
+        row = db.execute(
+            "SELECT teacher_user_id, title FROM tests WHERE id = ?", (test_id,)
+        ).fetchone()
+        if not row or row["teacher_user_id"] != user_id:
+            raise HTTPException(status_code=404, detail="Not found")
+        # Preserve the existing title unless the markdown defined a new one
+        title = (test_data.get("title") or "").strip() or row["title"]
+        db.execute(
+            "UPDATE tests SET test_data = ?, answer_key = ?, title = ? WHERE id = ?",
+            (json.dumps(test_data), json.dumps(answer_key), title, test_id)
+        )
+        db.commit()
+        return {"ok": True, "title": title, "block_count": len(test_data.get("sections", []))}
+    finally:
+        db.close()
 
 
 @router.get("/{test_id}/answer-key")

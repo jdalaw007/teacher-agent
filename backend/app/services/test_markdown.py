@@ -436,3 +436,199 @@ def markdown_to_test_data(markdown: str) -> dict:
         "test_data": {"title": title, "sections": sections},
         "answer_key": answer_key,
     }
+
+
+# ── Inverse: test_data + answer_key -> markdown ────────────────────────────
+
+
+def _pick_correct_letter(ak_value, options) -> Optional[str]:
+    """For a multiple_choice answer key entry, find the letter marked correct."""
+    if ak_value is None:
+        return None
+    vals = ak_value if isinstance(ak_value, list) else [ak_value]
+    vals_lower = [str(v).lower().strip() for v in vals]
+    # Direct letter match first
+    letters = [str(o[0]).lower() for o in options if isinstance(o, (list, tuple)) and len(o) >= 2]
+    for v in vals_lower:
+        if v in letters:
+            return v
+    # Then text match
+    for o in options:
+        if not (isinstance(o, (list, tuple)) and len(o) >= 2):
+            continue
+        letter, text = str(o[0]).lower(), str(o[1]).lower()
+        if text in vals_lower:
+            return letter
+    return None
+
+
+def _pick_correct_choice(ak_value, choices) -> Optional[str]:
+    """For a binary_choice answer key entry, return the choice text marked correct."""
+    if ak_value is None:
+        return None
+    vals = ak_value if isinstance(ak_value, list) else [ak_value]
+    vals_lower = [str(v).lower().strip() for v in vals]
+    for ch in choices:
+        if str(ch).lower().strip() in vals_lower:
+            return ch
+    return None
+
+
+def _restore_hint_letter(text: str, hint_letter: str) -> str:
+    """Put the hint letter back in front of the first ________ in text."""
+    if not hint_letter:
+        return text
+    return re.sub(r'(_{3,})', f'{hint_letter}\\1', text, count=1)
+
+
+def test_data_to_markdown(test_data: dict, answer_key: dict) -> str:
+    """Serialize test_data + answer_key back into our markdown spec.
+    Round-trips: parse(serialize(parse(md))) == parse(md).
+    """
+    lines: list[str] = []
+    title = (test_data.get("title") or "").strip()
+    if title:
+        lines.append(f"# {title}")
+        lines.append("")
+
+    for sec in test_data.get("sections", []):
+        bn = sec.get("block_num", "?")
+        section_title = (sec.get("section_title") or "").strip()
+        marks = sec.get("marks", 0)
+        instruction = (sec.get("instruction") or "").strip()
+
+        lines.append(f"## {bn}. {section_title} ({marks} marks)")
+        if instruction:
+            lines.append(f"> {instruction}")
+
+        # Optional single-line markers
+        if sec.get("audio_ref"):
+            lines.append(f"[audio {sec['audio_ref']}]")
+        if sec.get("word_box"):
+            lines.append(f"[wordbox] {', '.join(sec['word_box'])}")
+        if sec.get("example"):
+            lines.append(f"[example] {sec['example']}")
+
+        # Multi-line fenced regions
+        if sec.get("passage"):
+            lines.append("[passage]")
+            lines.append(sec["passage"].rstrip())
+            lines.append("[/passage]")
+        if sec.get("dialogue"):
+            lines.append("[dialogue]")
+            lines.append(sec["dialogue"].rstrip())
+            lines.append("[/dialogue]")
+        if sec.get("writing_guide"):
+            lines.append("[guide]")
+            lines.append(sec["writing_guide"].rstrip())
+            lines.append("[/guide]")
+
+        # Match section: questions live inside [match]
+        if sec.get("match_options"):
+            lines.append("")
+            lines.append("[match]")
+            for q in sec.get("questions", []):
+                if q.get("type") != "match":
+                    continue
+                qid = f"s{bn}_q{q['num']}"
+                ak = answer_key.get(qid)
+                if isinstance(ak, list) and ak:
+                    # Prefer the longer string (text label) over a single letter
+                    right = max(ak, key=lambda v: len(str(v)))
+                else:
+                    right = ak or ""
+                lines.append(f"- {q.get('text', '')} = {right}")
+            lines.append("[/match]")
+            lines.append("")
+            continue
+
+        # Regular questions
+        lines.append("")
+        for q in sec.get("questions", []):
+            qtype = q.get("type", "")
+            qnum = q.get("num", "?")
+            qid = f"s{bn}_q{qnum}"
+            text = q.get("text") or ""
+
+            if qtype == "fill_in_blank_hint":
+                hint = q.get("hint_letter") or ""
+                text_with_hint = _restore_hint_letter(text, hint)
+                ak = answer_key.get(qid)
+                ans_str = ", ".join(ak) if isinstance(ak, list) else (str(ak) if ak else "")
+                tail = f"   = {ans_str}" if ans_str else ""
+                lines.append(f"{qnum}. {text_with_hint}{tail}")
+
+            elif qtype == "fill_in_blank":
+                ak = answer_key.get(qid)
+                ans_str = ", ".join(ak) if isinstance(ak, list) else (str(ak) if ak else "")
+                tail = f"   = {ans_str}" if ans_str else ""
+                lines.append(f"{qnum}. {text}{tail}")
+
+            elif qtype == "short_answer":
+                ak = answer_key.get(qid)
+                ans_str = ", ".join(ak) if isinstance(ak, list) else (str(ak) if ak else "")
+                tail = f"   = {ans_str}" if ans_str else ""
+                lines.append(f"{qnum}. {text}{tail}")
+
+            elif qtype == "multiple_choice":
+                lines.append(f"{qnum}. {text}")
+                options = q.get("options") or []
+                correct = _pick_correct_letter(answer_key.get(qid), options)
+                for opt in options:
+                    if isinstance(opt, (list, tuple)) and len(opt) >= 2:
+                        letter, label = str(opt[0]), str(opt[1])
+                    else:
+                        letter, label = str(opt), str(opt)
+                    star = "*" if letter.lower() == (correct or "") else ""
+                    lines.append(f"   - {star}{letter}) {label}")
+
+            elif qtype == "binary_choice":
+                choices = q.get("choice_values") or []
+                correct = _pick_correct_choice(answer_key.get(qid), choices)
+                if len(choices) == 2:
+                    parts = []
+                    for ch in choices:
+                        prefix = "*" if ch == correct else ""
+                        parts.append(f"{prefix}{ch}")
+                    suffix = "(" + " / ".join(parts) + ")"
+                    if "________" in text:
+                        line_text = text.replace("________", suffix, 1)
+                    else:
+                        line_text = f"{text} {suffix}".strip()
+                    lines.append(f"{qnum}. {line_text}")
+                else:
+                    lines.append(f"{qnum}. {text}")
+
+            elif qtype == "tick":
+                lines.append(f"{qnum}.")
+                items = q.get("tick_items") or []
+                ak = answer_key.get(qid) or []
+                ak_lower = {str(a).lower().strip() for a in (ak if isinstance(ak, list) else [ak])}
+                for item in items:
+                    star = " *" if str(item).lower().strip() in ak_lower else ""
+                    lines.append(f"   [ ] {item}{star}")
+
+            elif qtype == "essay":
+                # Render as a marker; if the question has surrounding text, keep it
+                if text.strip():
+                    lines.append(f"{qnum}. {text} [essay]")
+                else:
+                    lines.append(f"{qnum}. [essay]")
+
+            elif qtype == "show_work":
+                lines.append(f"{qnum}. {text} [showwork]")
+
+            else:
+                lines.append(f"{qnum}. {text}")
+
+            lines.append("")  # blank line between questions
+
+        # Trim trailing blank within section
+        while lines and not lines[-1].strip():
+            lines.pop()
+        lines.append("")  # one blank between sections
+
+    # Trim trailing blanks
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return "\n".join(lines) + "\n"

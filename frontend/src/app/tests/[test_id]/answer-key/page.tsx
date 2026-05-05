@@ -42,6 +42,11 @@ export default function AnswerKeyEditorPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [edits, setEdits] = useState<Record<string, AnswerVal>>({});
+  const [mode, setMode] = useState<"visual" | "markdown">("visual");
+  const [markdown, setMarkdown] = useState("");
+  const [mdLoading, setMdLoading] = useState(false);
+  const [mdSaving, setMdSaving] = useState(false);
+  const [mdMsg, setMdMsg] = useState("");
 
   function getToken() {
     return localStorage.getItem("token") || "";
@@ -74,6 +79,63 @@ export default function AnswerKeyEditorPage() {
       return next;
     });
     setSaved(false);
+  }
+
+  async function loadMarkdown() {
+    setMdLoading(true);
+    setMdMsg("");
+    const token = getToken();
+    try {
+      const r = await fetch(`${API_URL}/test/${testId}/markdown`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) throw new Error(`${r.status}`);
+      const d = await r.json();
+      setMarkdown(d.markdown);
+    } catch (e: unknown) {
+      setMdMsg(`Could not load markdown: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setMdLoading(false);
+    }
+  }
+
+  async function saveMarkdown() {
+    if (!markdown.trim()) { setMdMsg("Markdown cannot be empty."); return; }
+    setMdSaving(true);
+    setMdMsg("");
+    const token = getToken();
+    try {
+      const r = await fetch(`${API_URL}/test/${testId}/markdown`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ markdown }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ detail: r.statusText }));
+        throw new Error(err.detail || r.statusText);
+      }
+      const result = await r.json();
+      setMdMsg(`Saved — ${result.block_count} blocks. Switching back to visual view...`);
+      // Reload the visual data so the editor reflects new state
+      const r2 = await fetch(`${API_URL}/test/${testId}/answer-key`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (r2.ok) {
+        const d2: AnswerKeyData = await r2.json();
+        setData(d2);
+        setEdits({ ...d2.answer_key });
+      }
+      setTimeout(() => { setMode("visual"); setMdMsg(""); }, 1200);
+    } catch (e: unknown) {
+      setMdMsg(`Save failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setMdSaving(false);
+    }
+  }
+
+  async function switchToMarkdownMode() {
+    setMode("markdown");
+    if (!markdown) await loadMarkdown();
   }
 
   async function handleSave() {
@@ -127,14 +189,55 @@ export default function AnswerKeyEditorPage() {
           </p>
         </div>
         <div style={s.headerActions}>
-          {saved && <span style={s.savedTag}>Saved</span>}
-          <button style={saving ? s.saveBtnDisabled : s.saveBtn} onClick={handleSave} disabled={saving}>
-            {saving ? "Saving…" : "Save changes"}
-          </button>
+          <div style={s.modeToggle}>
+            <button
+              style={{ ...s.modeBtn, ...(mode === "visual" ? s.modeBtnActive : {}) }}
+              onClick={() => setMode("visual")}
+            >Visual</button>
+            <button
+              style={{ ...s.modeBtn, ...(mode === "markdown" ? s.modeBtnActive : {}) }}
+              onClick={switchToMarkdownMode}
+            >Markdown</button>
+          </div>
+          {mode === "visual" && (
+            <>
+              {saved && <span style={s.savedTag}>Saved</span>}
+              <button style={saving ? s.saveBtnDisabled : s.saveBtn} onClick={handleSave} disabled={saving}>
+                {saving ? "Saving…" : "Save changes"}
+              </button>
+            </>
+          )}
+          {mode === "markdown" && (
+            <button style={mdSaving ? s.saveBtnDisabled : s.saveBtn} onClick={saveMarkdown} disabled={mdSaving || mdLoading}>
+              {mdSaving ? "Saving…" : "Save markdown"}
+            </button>
+          )}
         </div>
       </div>
 
-      {blockNums.map(bn => (
+      {mode === "markdown" && (
+        <div style={s.markdownContainer}>
+          {mdLoading && <p style={{ color: "#888" }}>Loading markdown…</p>}
+          {!mdLoading && (
+            <>
+              <p style={s.subtitle}>
+                Edit anything: question text, options, answer marks, or add entirely new blocks.
+                Saving re-parses the markdown and updates the test in place. Existing student
+                submissions are preserved and re-graded against the new answer key.
+              </p>
+              <textarea
+                value={markdown}
+                onChange={e => setMarkdown(e.target.value)}
+                style={s.markdownTextarea}
+                spellCheck={false}
+              />
+              {mdMsg && <div style={mdMsg.startsWith("Save failed") || mdMsg.startsWith("Could not") ? s.mdErr : s.mdMsg}>{mdMsg}</div>}
+            </>
+          )}
+        </div>
+      )}
+
+      {mode === "visual" && blockNums.map(bn => (
         <div key={bn} style={s.block}>
           <h2 style={s.blockTitle}>Block {bn}</h2>
           {blocks[bn].map(q => (
@@ -157,12 +260,14 @@ export default function AnswerKeyEditorPage() {
         </div>
       ))}
 
-      <div style={s.footer}>
-        {saved && <span style={s.savedTag}>Saved</span>}
-        <button style={saving ? s.saveBtnDisabled : s.saveBtn} onClick={handleSave} disabled={saving}>
-          {saving ? "Saving…" : "Save changes"}
-        </button>
-      </div>
+      {mode === "visual" && (
+        <div style={s.footer}>
+          {saved && <span style={s.savedTag}>Saved</span>}
+          <button style={saving ? s.saveBtnDisabled : s.saveBtn} onClick={handleSave} disabled={saving}>
+            {saving ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -516,4 +621,11 @@ const s: Record<string, React.CSSProperties> = {
   editActions: { display: "flex", gap: 8, marginTop: 12 },
   smallSaveBtn: { background: "#6f42c1", color: "white", border: "none", padding: "6px 14px", borderRadius: 4, cursor: "pointer", fontSize: 12, fontWeight: "bold" },
   cancelBtn: { background: "none", border: "1px solid #ccc", color: "#666", padding: "6px 14px", borderRadius: 4, cursor: "pointer", fontSize: 12 },
+  modeToggle: { display: "inline-flex", border: "1px solid #ccc", borderRadius: 6, overflow: "hidden" },
+  modeBtn: { background: "white", color: "#666", border: "none", padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: "bold" },
+  modeBtnActive: { background: "#0066cc", color: "white" },
+  markdownContainer: { background: "white", border: "1px solid #ddd", borderRadius: 8, padding: "20px 24px", marginBottom: 18 },
+  markdownTextarea: { width: "100%", minHeight: 480, padding: "12px 14px", border: "1px solid #ccc", borderRadius: 5, fontSize: 13, fontFamily: "Menlo, Consolas, monospace", resize: "vertical", outline: "none", lineHeight: 1.5 },
+  mdMsg: { color: "#1a7a30", fontSize: 13, marginTop: 8, padding: "8px 12px", background: "#e6f9ee", border: "1px solid #28a745", borderRadius: 5 },
+  mdErr: { color: "#c00", fontSize: 13, marginTop: 8, padding: "8px 12px", background: "#fee", border: "1px solid #fcc", borderRadius: 5 },
 };
