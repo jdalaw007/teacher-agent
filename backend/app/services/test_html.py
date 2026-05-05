@@ -51,6 +51,10 @@ input.ans:focus { border-bottom-color: #0066cc; background: #f0f8ff; }
 .writing-guide { background: #f8f8f8; border: 1px solid #ddd; border-radius: 4px; padding: 10px 14px; margin: 8px 0; font-size: 12px; color: #555; line-height: 1.7; }
 textarea.writing-box { width: 100%; min-height: 130px; border: 1px solid #ccc; padding: 10px; font-size: 14px; font-family: Arial, sans-serif; resize: vertical; outline: none; border-radius: 4px; }
 textarea.writing-box:focus { border-color: #0066cc; box-shadow: 0 0 0 2px rgba(0,102,204,0.12); }
+.word-count { font-size: 12px; color: #666; text-align: right; margin-top: 4px; font-family: Arial, sans-serif; }
+.word-count.in-range { color: #1a7a30; font-weight: bold; }
+.word-count.under { color: #c08000; }
+.word-count.over { color: #c00; }
 .submit-section { margin-top: 36px; padding-top: 20px; border-top: 2px solid #eee; text-align: center; }
 .submit-btn { background: #0066cc; color: white; border: none; padding: 14px 52px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; }
 .submit-btn:hover:not(:disabled) { background: #0052a3; }
@@ -136,6 +140,32 @@ window.addEventListener('beforeunload', function(e) {
   e.preventDefault();
   e.returnValue = '';
 });
+
+// ── Word counter for essay / show_work textareas ─────────────────────────────
+(function () {
+  document.querySelectorAll('textarea.writing-box').forEach(function (ta) {
+    const counter = ta.parentNode.querySelector('.word-count');
+    if (!counter) return;
+    const wmin = parseInt(ta.dataset.wordMin, 10);
+    const wmax = parseInt(ta.dataset.wordMax, 10);
+    function update() {
+      const text = ta.value.trim();
+      const count = text ? text.split(/\s+/).length : 0;
+      let msg = count + (count === 1 ? ' word' : ' words');
+      if (!isNaN(wmin) || !isNaN(wmax)) {
+        if (!isNaN(wmin) && !isNaN(wmax)) msg = count + ' / ' + wmin + '–' + wmax + ' words';
+        else if (!isNaN(wmin)) msg = count + ' / ' + wmin + '+ words';
+      }
+      counter.textContent = msg;
+      counter.classList.remove('in-range', 'under', 'over');
+      if (!isNaN(wmin) && count < wmin) counter.classList.add('under');
+      else if (!isNaN(wmax) && count > wmax) counter.classList.add('over');
+      else if (!isNaN(wmin) || !isNaN(wmax)) counter.classList.add('in-range');
+    }
+    ta.addEventListener('input', update);
+    update();
+  });
+})();
 
 // ── Block paste / drop / right-click in answer fields ────────────────────────
 // Goal: stop students from pasting AI-generated answers from ChatGPT etc.
@@ -238,6 +268,23 @@ function submitTest() {
 
 def _q_key(block_num: int, q_num: int) -> str:
     return f"s{block_num}_q{q_num}"
+
+
+_WORD_TARGET_RE = _re.compile(r"(\d+)\s*[–—\-]\s*(\d+)\s*words?", _re.IGNORECASE)
+_WORD_MIN_RE = _re.compile(r"(\d+)\+?\s*words?", _re.IGNORECASE)
+
+
+def _extract_word_target(text: str) -> tuple:
+    """Find a 'X-Y words' or 'X words' target in instruction text. Returns (min, max) or (None, None)."""
+    if not text:
+        return None, None
+    m = _WORD_TARGET_RE.search(text)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    m = _WORD_MIN_RE.search(text)
+    if m:
+        return int(m.group(1)), None
+    return None, None
 
 
 def _render_question(q: dict, block_num: int) -> str:
@@ -346,12 +393,21 @@ def _render_question(q: dict, block_num: int) -> str:
         return f'<div class="match-row"><span class="match-text">{q["num"]}. {text}</span>{sel}</div>'
 
     elif qtype == "essay":
-        ta = f'<textarea class="writing-box" name="{q_key}" spellcheck="false" autocorrect="off" autocomplete="off" data-gramm="false" placeholder="Write your answer here..."></textarea>'
-        return f'<div class="q">{ta}</div>'
+        target_attrs = ""
+        wmin = q.get("__word_min")
+        wmax = q.get("__word_max")
+        if wmin is not None:
+            target_attrs += f' data-word-min="{wmin}"'
+        if wmax is not None:
+            target_attrs += f' data-word-max="{wmax}"'
+        ta = f'<textarea class="writing-box" name="{q_key}"{target_attrs} spellcheck="false" autocorrect="off" autocomplete="off" data-gramm="false" placeholder="Write your answer here..."></textarea>'
+        counter = f'<div class="word-count" data-for="{q_key}">0 words</div>'
+        return f'<div class="q">{ta}{counter}</div>'
 
     elif qtype == "show_work":
         ta = f'<textarea class="writing-box" name="{q_key}" spellcheck="false" autocorrect="off" autocomplete="off" data-gramm="false" placeholder="Show your working here..."></textarea>'
-        return f'<div class="q">{q["num"]}. {text}<br>{ta}</div>'
+        counter = f'<div class="word-count" data-for="{q_key}">0 words</div>'
+        return f'<div class="q">{q["num"]}. {text}<br>{ta}{counter}</div>'
 
     return f'<div class="q">{q["num"]}. {text}</div>'
 
@@ -426,10 +482,21 @@ def _render_section(section: dict, prev_section_title: str) -> str:
         )
         parts.append(f'<div class="word-box">{opt_strs}</div>')
 
+    # Look for a "Write X-Y words" target in the section instruction or writing guide.
+    # Pass through to essay questions so the live word counter can show progress.
+    target_source = " ".join(filter(None, [
+        section.get("instruction", ""),
+        section.get("writing_guide", ""),
+    ]))
+    word_min, word_max = _extract_word_target(target_source)
+
     # Questions
     for q in section.get("questions", []):
-        if q.get("type") == "match":
+        qtype = q.get("type")
+        if qtype == "match":
             q = {**q, "__match_options": match_options}
+        elif qtype == "essay" and (word_min is not None or word_max is not None):
+            q = {**q, "__word_min": word_min, "__word_max": word_max}
         parts.append(_render_question(q, block_num))
 
     return "\n".join(parts)
