@@ -270,9 +270,11 @@ def extract_outline(file_bytes: bytes, filename: str, ai_client, model: str) -> 
 def block_to_markdown(file_bytes: bytes, filename: str, outline_block: dict,
                      ai_client, model: str,
                      answer_key_bytes: Optional[bytes] = None,
-                     answer_key_filename: Optional[str] = None) -> str:
+                     answer_key_filename: Optional[str] = None,
+                     extraction_notes: Optional[str] = None) -> str:
     """Generate markdown for a single block, using the rest of the document as context.
     Optionally pass an answer key file — the AI uses it to mark correct answers.
+    Optionally pass extraction_notes — teacher's accumulated style guide rules.
     """
     template = BLOCK_PROMPT_WITH_KEY if answer_key_bytes else BLOCK_PROMPT_NO_KEY
     prompt = template.format(
@@ -284,6 +286,14 @@ def block_to_markdown(file_bytes: bytes, filename: str, outline_block: dict,
         expected_type=outline_block.get("expected_type", "?"),
         spec=MARKDOWN_SPEC,
     )
+
+    if extraction_notes and extraction_notes.strip():
+        style_guide = (
+            "\n\nTEACHER'S STYLE GUIDE (these notes come from the teacher, "
+            "based on past corrections — they OVERRIDE generic guidance above "
+            "when in conflict):\n" + extraction_notes.strip() + "\n"
+        )
+        prompt = prompt + style_guide
 
     test_is_pdf = filename.lower().endswith(".pdf")
     key_is_pdf = bool(answer_key_filename and answer_key_filename.lower().endswith(".pdf"))
@@ -333,7 +343,8 @@ def block_to_markdown(file_bytes: bytes, filename: str, outline_block: dict,
 def extract_to_markdown(file_bytes: bytes, filename: str, ai_client, model: str,
                        progress_cb: Optional[callable] = None,
                        answer_key_bytes: Optional[bytes] = None,
-                       answer_key_filename: Optional[str] = None) -> dict:
+                       answer_key_filename: Optional[str] = None,
+                       extraction_notes: Optional[str] = None) -> dict:
     """
     Convert a test document end-to-end into our markdown format.
     Returns {"markdown": str, "outline": dict, "errors": [str]}.
@@ -342,6 +353,8 @@ def extract_to_markdown(file_bytes: bytes, filename: str, ai_client, model: str,
     caller can stream UI updates.
     answer_key_bytes (optional): if provided, AI uses the official key to mark
     correct answers instead of guessing.
+    extraction_notes (optional): teacher's curated style guide. Injected into
+    every per-block prompt so the AI follows the teacher's specific rules.
     """
     errors: list[str] = []
 
@@ -365,6 +378,7 @@ def extract_to_markdown(file_bytes: bytes, filename: str, ai_client, model: str,
                 file_bytes, filename, block, ai_client, model,
                 answer_key_bytes=answer_key_bytes,
                 answer_key_filename=answer_key_filename,
+                extraction_notes=extraction_notes,
             )
             block_markdowns.append(md)
         except Exception as e:

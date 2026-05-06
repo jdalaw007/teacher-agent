@@ -624,11 +624,16 @@ async def parse_to_markdown(
         key_bytes = await answer_key_file.read()
         key_name = answer_key_file.filename
 
+    # Pull the teacher's extraction style guide if they have one
+    from app.services.profile import ProfileService
+    notes = ProfileService(user_id).get_extraction_notes()
+
     try:
         result = extract_to_markdown(
             file_bytes, filename, ai_client, model,
             answer_key_bytes=key_bytes,
             answer_key_filename=key_name,
+            extraction_notes=notes or None,
         )
     except Exception as e:
         import traceback
@@ -642,18 +647,24 @@ async def parse_to_markdown(
         "outline": result["outline"],
         "errors": result["errors"],
         "used_answer_key": key_bytes is not None,
+        "used_style_guide": bool(notes and notes.strip()),
     }
 
 
 class FromMarkdownRequest(BaseModel):
     markdown: str
     title: Optional[str] = None
+    original_markdown: Optional[str] = None  # AI's first draft, kept for V2 auto-learning
 
 
 @router.post("/from-markdown")
 async def create_test_from_markdown(body: FromMarkdownRequest, request: Request):
     """Build a test directly from markdown — no AI parsing involved.
     The markdown spec is documented in app/services/test_markdown.py.
+
+    If original_markdown is provided (the AI's first draft before the teacher's
+    edits), it's stored alongside the test for future auto-learning: a later
+    pass can diff original vs final to extract style-guide rules.
     """
     user_id = _require_auth(request)
 
@@ -679,12 +690,14 @@ async def create_test_from_markdown(body: FromMarkdownRequest, request: Request)
 
     test_id = uuid.uuid4().hex[:8]
     title = test_data.get("title") or "Untitled Test"
+    original_md = (body.original_markdown or "").strip()
 
     db = get_db()
     try:
         db.execute(
-            "INSERT INTO tests (id, teacher_user_id, title, test_data, answer_key) VALUES (?, ?, ?, ?, ?)",
-            (test_id, user_id, title, json.dumps(test_data), json.dumps(answer_key))
+            "INSERT INTO tests (id, teacher_user_id, title, test_data, answer_key, original_markdown) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (test_id, user_id, title, json.dumps(test_data), json.dumps(answer_key), original_md)
         )
         db.commit()
     finally:

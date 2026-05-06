@@ -32,6 +32,7 @@ interface FormData {
   gemini_api_key: string
   claude_api_key: string
   ai_provider: string
+  extraction_notes: string
   language: string
   skills_enabled: Record<string, boolean>
 }
@@ -46,7 +47,8 @@ export default function SettingsPage() {
   const [form, setForm] = useState<FormData>({
     display_name: '', school_org: '', role: 'Teacher',
     subjects: [], grade_levels: [], teaching_style: '', about: '',
-    openai_api_key: '', gemini_api_key: '', claude_api_key: '', ai_provider: 'openai', language: 'English',
+    openai_api_key: '', gemini_api_key: '', claude_api_key: '', ai_provider: 'openai',
+    extraction_notes: '', language: 'English',
     skills_enabled: { classroom_post: true, gmail: false, calendar: false, drive_print: false },
   })
   const [subjectInput, setSubjectInput] = useState('')
@@ -92,6 +94,7 @@ export default function SettingsPage() {
             gemini_api_key: '',
             claude_api_key: '',
             ai_provider: data.ai_provider || 'openai',
+            extraction_notes: data.extraction_notes || '',
             language: data.language || 'English',
             skills_enabled: {
               classroom_post: true, gmail: false, calendar: false, drive_print: false,
@@ -432,6 +435,29 @@ export default function SettingsPage() {
             {claudeKeyStatus === 'invalid' &&
               <span style={{ color: '#ea4335', fontSize: '0.88rem' }}>{claudeKeyError}</span>}
           </div>
+        </div>
+
+        <div style={s.section}>
+          <h2 style={s.sectionTitle}>Test extraction notes</h2>
+          <p style={{ fontSize: '0.88rem', color: '#666', marginBottom: '14px', lineHeight: '1.5' }}>
+            Rules you&apos;ve learned about how the AI should extract YOUR tests. Each line gets injected
+            into every test-extraction call so the AI follows your specific publisher&apos;s style.
+            Add a rule whenever you spot the AI making the same mistake repeatedly.
+          </p>
+          <textarea
+            style={{
+              width: '100%', minHeight: 160, padding: '10px 12px',
+              border: '1px solid #ccc', borderRadius: 5, fontSize: 13,
+              fontFamily: 'Menlo, Consolas, monospace', resize: 'vertical', outline: 'none',
+              lineHeight: 1.6,
+            }}
+            value={form.extraction_notes}
+            onChange={e => update('extraction_notes', e.target.value)}
+            placeholder={`Examples:\n- For "Write passive questions" blocks, accept both present and past tense forms.\n- Always copy reading passages verbatim — never summarise.\n- For multi-blank paragraphs, use [dialogue] and one fill_in_blank_hint per gap.\n- Listening section answers come from the answer key, not the question text.`}
+          />
+          <p style={{ fontSize: 12, color: '#888', margin: '6px 0 0' }}>
+            Saved with the rest of your profile. Leave blank to skip.
+          </p>
         </div>
 
         <div style={s.section}>

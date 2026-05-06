@@ -26,6 +26,7 @@ export default function TestsPage() {
   const testFileRef = useRef<HTMLInputElement>(null);
   const keyFileRef = useRef<HTMLInputElement>(null);
   const [markdown, setMarkdown] = useState("");
+  const [originalMarkdown, setOriginalMarkdown] = useState("");  // AI's first draft, kept for V2 auto-learning
   const [mdTitle, setMdTitle] = useState("");
   const [mdSubmitting, setMdSubmitting] = useState(false);
   const [mdMsg, setMdMsg] = useState("");
@@ -75,8 +76,11 @@ export default function TestsPage() {
         throw new Error(err.detail || r.statusText);
       }
       const data = await r.json();
-      // Drop the markdown into the editor below for review
+      // Drop the markdown into the editor below for review.
+      // Capture the AI's original draft separately so we can send both when the
+      // teacher creates the test — the diff feeds V2 auto-learning.
       setMarkdown(data.markdown || "");
+      setOriginalMarkdown(data.markdown || "");
       setMdShown(true);
       const blockCount = data.outline?.blocks?.length || 0;
       const errCount = (data.errors || []).length;
@@ -150,7 +154,12 @@ export default function TestsPage() {
       const r = await fetch(`${API_URL}/test/from-markdown`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ markdown, title: mdTitle.trim() || undefined }),
+        body: JSON.stringify({
+          markdown,
+          title: mdTitle.trim() || undefined,
+          // Pass the AI's first draft if there was one (omit for hand-typed markdown)
+          original_markdown: originalMarkdown || undefined,
+        }),
       });
       if (!r.ok) {
         const err = await r.json().catch(() => ({ detail: r.statusText }));
@@ -158,7 +167,7 @@ export default function TestsPage() {
       }
       const data = await r.json();
       setMdMsg(`"${data.title}" created. Test ID: ${data.test_id}`);
-      setMarkdown(""); setMdTitle("");
+      setMarkdown(""); setMdTitle(""); setOriginalMarkdown("");
       loadTests();
     } catch (e: unknown) {
       setMdErr(`Could not create: ${e instanceof Error ? e.message : String(e)}`);

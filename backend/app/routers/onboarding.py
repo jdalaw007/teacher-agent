@@ -27,6 +27,7 @@ class SaveProfileRequest(BaseModel):
     gemini_api_key: Optional[str] = ""
     claude_api_key: Optional[str] = ""
     ai_provider: Optional[str] = ""
+    extraction_notes: Optional[str] = None  # None = don't change, "" = clear it
     language: Optional[str] = ""
     skills_enabled: Optional[dict] = None
 

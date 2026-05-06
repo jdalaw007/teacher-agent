@@ -30,6 +30,8 @@ class ProfileService:
             p["has_api_key"] = bool(p.pop("openai_api_key", None))
             p["has_gemini_key"] = bool(p.pop("gemini_api_key", None))
             p["has_claude_key"] = bool(p.pop("claude_api_key", None))
+            # extraction_notes is plain text (not a secret) — return as-is
+            p["extraction_notes"] = p.get("extraction_notes") or ""
             return p
         finally:
             db.close()
@@ -70,6 +72,18 @@ class ProfileService:
         finally:
             db.close()
 
+    def get_extraction_notes(self) -> str:
+        """Return the user's accumulated test-extraction style notes, or empty string."""
+        db = get_db()
+        try:
+            row = db.execute(
+                "SELECT extraction_notes FROM user_profiles WHERE user_id = ?",
+                (self.user_id,)
+            ).fetchone()
+            return (row["extraction_notes"] or "") if row else ""
+        finally:
+            db.close()
+
     def get_ai_provider(self) -> str:
         """Return the user's preferred AI provider ('openai' or 'gemini')."""
         db = get_db()
@@ -89,6 +103,8 @@ class ProfileService:
         gemini_key = data.get("gemini_api_key", "")
         claude_key = data.get("claude_api_key", "")
         ai_provider = data.get("ai_provider", "")
+        # extraction_notes uses a sentinel: None means "don't change", "" means "clear it"
+        extraction_notes = data.get("extraction_notes")
         skills_raw = data.get("skills_enabled")
         skills_json = json.dumps(skills_raw) if isinstance(skills_raw, dict) else ""
 
@@ -114,6 +130,7 @@ class ProfileService:
                         gemini_api_key = CASE WHEN ? = '' THEN gemini_api_key ELSE ? END,
                         claude_api_key = CASE WHEN ? = '' THEN claude_api_key ELSE ? END,
                         ai_provider = CASE WHEN ? = '' THEN ai_provider ELSE ? END,
+                        extraction_notes = CASE WHEN ? IS NULL THEN extraction_notes ELSE ? END,
                         language = CASE WHEN ? = '' THEN language ELSE ? END,
                         skills_enabled = CASE WHEN ? = '' THEN skills_enabled ELSE ? END,
                         onboarding_complete = 1,
@@ -131,6 +148,7 @@ class ProfileService:
                     gemini_key, gemini_key,
                     claude_key, claude_key,
                     ai_provider, ai_provider,
+                    extraction_notes, extraction_notes,
                     language, language,
                     skills_json, skills_json,
                     self.user_id,
@@ -140,8 +158,9 @@ class ProfileService:
                     INSERT INTO user_profiles
                         (user_id, display_name, school_org, role, subjects,
                          grade_levels, teaching_style, about, openai_api_key,
-                         gemini_api_key, claude_api_key, ai_provider, language, skills_enabled, onboarding_complete)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                         gemini_api_key, claude_api_key, ai_provider, extraction_notes,
+                         language, skills_enabled, onboarding_complete)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                 """, (
                     self.user_id,
                     data.get("display_name", ""),
@@ -155,6 +174,7 @@ class ProfileService:
                     gemini_key,
                     claude_key,
                     ai_provider or "openai",
+                    extraction_notes or "",
                     language or "English",
                     skills_json or json.dumps(DEFAULT_SKILLS),
                 ))
