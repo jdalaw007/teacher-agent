@@ -373,6 +373,7 @@ function StudentSheet({ sub, idx, total, sections, answerKey, aiGrades, testId }
                   max={section.marks}
                   value={effective ?? ""}
                   onChange={e => handleScoreChange(section.block_num, e.target.value, section.marks)}
+                  onFocus={e => e.currentTarget.select()}
                   className="score-input"
                   style={{
                     ...s.scoreInput,
