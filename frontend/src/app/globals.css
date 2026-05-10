@@ -25,4 +25,21 @@ a {
   .no-print { display: none !important; }
   nav, header { display: none !important; }
   body { background: white !important; }
+  .score-input {
+    border: none !important;
+    background: transparent !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    padding: 0 !important;
+    width: auto !important;
+    font-weight: normal !important;
+    color: #000 !important;
+  }
 }
+
+.score-input::-webkit-inner-spin-button,
+.score-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.score-input { -moz-appearance: textfield; }

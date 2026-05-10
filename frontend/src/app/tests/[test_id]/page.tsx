@@ -28,6 +28,7 @@ interface Submission {
   student_name: string;
   answers: Record<string, string | string[]>;
   ai_grades: Record<string, AiGrade>;
+  score_overrides?: Record<string, number>;
   submitted_at: string;
 }
 
@@ -245,23 +246,98 @@ export default function TestResultsPage() {
           sections={data.sections}
           answerKey={data.answer_key}
           aiGrades={aiGrades[sub.id] || sub.ai_grades}
+          testId={testId}
         />
       ))}
     </div>
   );
 }
 
-function StudentSheet({ sub, idx, total, sections, answerKey, aiGrades }: {
+function StudentSheet({ sub, idx, total, sections, answerKey, aiGrades, testId }: {
   sub: Submission;
   idx: number;
   total: number;
   sections: Section[];
   answerKey: Record<string, string | string[]>;
   aiGrades: Record<string, AiGrade>;
+  testId: string;
 }) {
-  const score = autoScore(sub.answers, answerKey);
-  const autoQ = Object.keys(answerKey).length;
+  // Per-section default score: override > AI grade (essays) > auto-score > null
+  function defaultSectionScore(section: Section): number | null {
+    const qKey = (qNum: number) => `s${section.block_num}_q${qNum}`;
+    const hasAuto = section.questions.some(q => answerKey[qKey(q.num)] !== undefined);
+    if (hasAuto) {
+      return section.questions.filter(
+        q => checkAnswer(qKey(q.num), sub.answers[qKey(q.num)] || "", answerKey) === true
+      ).length;
+    }
+    // Essay sections — sum AI grades if present (assume one essay per section here)
+    const essayQ = section.questions.find(q => q.type === "essay");
+    if (essayQ) {
+      const g = aiGrades[qKey(essayQ.num)];
+      if (g && typeof g.score === "number" && g.score >= 0) return g.score;
+    }
+    return null;
+  }
+
+  // Initial overrides from server
+  const [overrides, setOverrides] = useState<Record<number, number | null>>(() => {
+    const init: Record<number, number | null> = {};
+    if (sub.score_overrides) {
+      for (const [k, v] of Object.entries(sub.score_overrides)) {
+        init[Number(k)] = typeof v === "number" ? v : null;
+      }
+    }
+    return init;
+  });
+
+  // Effective score per section (override wins)
+  function sectionScore(section: Section): number | null {
+    if (section.block_num in overrides && overrides[section.block_num] !== null) {
+      return overrides[section.block_num];
+    }
+    return defaultSectionScore(section);
+  }
+
+  async function saveOverrides(next: Record<number, number | null>) {
+    const token = localStorage.getItem("token") || "";
+    if (!token) return;
+    const payload: Record<string, number> = {};
+    for (const [k, v] of Object.entries(next)) {
+      if (typeof v === "number") payload[k] = v;
+    }
+    try {
+      await fetch(`${API_URL}/test/${testId}/submissions/${sub.id}/scores`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ score_overrides: payload }),
+      });
+    } catch { /* silent */ }
+  }
+
+  function handleScoreChange(blockNum: number, raw: string, max: number) {
+    let parsed: number | null = null;
+    if (raw.trim() !== "") {
+      const n = Number(raw);
+      if (!isNaN(n)) parsed = Math.max(0, Math.min(max, n));
+    }
+    const next = { ...overrides, [blockNum]: parsed };
+    setOverrides(next);
+    saveOverrides(next);
+  }
+
+  // Sums for top + bottom totals
+  let runningTotal = 0;
+  let allFilled = true;
+  for (const sec of sections) {
+    const v = sectionScore(sec);
+    if (v === null) allFilled = false;
+    else runningTotal += v;
+  }
+
   const totalM = totalMarks(sections);
+  const autoQ = Object.keys(answerKey).length;
+  const autoScored = autoScore(sub.answers, answerKey);
   const date = new Date(sub.submitted_at + "Z").toLocaleDateString("en-GB", {
     day: "numeric", month: "long", year: "numeric",
   });
@@ -274,28 +350,37 @@ function StudentSheet({ sub, idx, total, sections, answerKey, aiGrades }: {
           <div style={s.sheetMeta}>{date}</div>
         </div>
         <div style={s.scoreBox}>
-          {autoQ > 0 && <div style={s.scoreAuto}>Auto: {score}/{autoQ}</div>}
-          <div style={s.scoreTotal}>Total: ___/{totalM}</div>
+          {autoQ > 0 && <div style={s.scoreAuto}>Auto: {autoScored}/{autoQ}</div>}
+          <div style={s.scoreTotal}>
+            Total: <span style={{ color: allFilled ? "#111" : "#888" }}>{allFilled ? runningTotal : runningTotal || "___"}</span>/{totalM}
+          </div>
         </div>
       </div>
 
       {sections.map(section => {
         const qKey = (qNum: number) => `s${section.block_num}_q${qNum}`;
-        const sectionScore = section.questions.filter(
-          q => checkAnswer(qKey(q.num), sub.answers[qKey(q.num)] || "", answerKey) === true
-        ).length;
-        const hasAutoScore = section.questions.some(q => answerKey[qKey(q.num)] !== undefined);
+        const effective = sectionScore(section);
+        const isOverridden = section.block_num in overrides && overrides[section.block_num] !== null;
 
         return (
           <div key={section.block_num} style={s.section}>
             <div style={s.sectionHeader}>
               <span style={s.sectionTitle}>{section.block_num}. {section.instruction}</span>
               <span style={s.sectionScore}>
-                {hasAutoScore
-                  ? `${sectionScore}/${section.marks}`
-                  : section.questions.some(q => q.type === "essay") && aiGrades[qKey(section.questions[0]?.num)]
-                    ? `AI: ${aiGrades[qKey(section.questions[0]?.num)]?.score ?? "?"}/${section.marks}`
-                    : `Teacher marks: ___/${section.marks}`}
+                <input
+                  type="number"
+                  min={0}
+                  max={section.marks}
+                  value={effective ?? ""}
+                  onChange={e => handleScoreChange(section.block_num, e.target.value, section.marks)}
+                  className="score-input"
+                  style={{
+                    ...s.scoreInput,
+                    color: isOverridden ? "#0066cc" : "#333",
+                    fontWeight: isOverridden ? "bold" : "normal",
+                  }}
+                />
+                /{section.marks}
               </span>
             </div>
 
@@ -345,10 +430,17 @@ function StudentSheet({ sub, idx, total, sections, answerKey, aiGrades }: {
       })}
 
       <div style={s.scoreSummary}>
-        {sections.map(sec => (
-          <span key={sec.block_num}>{sec.section_title || `Block ${sec.block_num}`}: ___/{sec.marks}</span>
-        ))}
-        <span style={{ fontWeight: "bold" }}>TOTAL: ___/{totalMarks(sections)}</span>
+        {sections.map(sec => {
+          const v = sectionScore(sec);
+          return (
+            <span key={sec.block_num}>
+              {sec.section_title || `Block ${sec.block_num}`}: {v !== null ? v : "___"}/{sec.marks}
+            </span>
+          );
+        })}
+        <span style={{ fontWeight: "bold" }}>
+          TOTAL: {allFilled ? runningTotal : (runningTotal || "___")}/{totalMarks(sections)}
+        </span>
       </div>
     </div>
   );
@@ -381,7 +473,8 @@ const s: Record<string, React.CSSProperties> = {
   section: { marginBottom: 16, borderBottom: "1px solid #eee", paddingBottom: 12 },
   sectionHeader: { display: "flex", justifyContent: "space-between", marginBottom: 8 },
   sectionTitle: { fontWeight: "bold", fontSize: 13 },
-  sectionScore: { fontSize: 12, color: "#555", fontStyle: "italic" },
+  sectionScore: { fontSize: 12, color: "#555", fontStyle: "italic", display: "flex", alignItems: "center", gap: 2 },
+  scoreInput: { width: 42, fontSize: 12, padding: "1px 4px", border: "1px solid #bbb", borderRadius: 3, textAlign: "right" as const, fontFamily: "inherit", background: "#fff" },
   answerRow: { display: "flex", alignItems: "center", gap: 6, fontSize: 13, padding: "2px 0" },
   qNum: { color: "#888", minWidth: 28, fontSize: 12 },
   answerVal: { fontWeight: "bold" },

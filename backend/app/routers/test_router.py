@@ -1093,7 +1093,7 @@ async def get_dynamic_submissions(test_id: str, request: Request):
             raise HTTPException(status_code=404, detail="Test not found")
 
         rows = db.execute(
-            "SELECT id, student_name, answers, submitted_at, ai_grades FROM test_submissions "
+            "SELECT id, student_name, answers, submitted_at, ai_grades, score_overrides FROM test_submissions "
             "WHERE test_id = ? ORDER BY submitted_at ASC",
             (test_id,)
         ).fetchall()
@@ -1103,6 +1103,7 @@ async def get_dynamic_submissions(test_id: str, request: Request):
             r = dict(row)
             r["answers"] = json.loads(r["answers"])
             r["ai_grades"] = json.loads(r["ai_grades"] or "{}")
+            r["score_overrides"] = json.loads(r["score_overrides"] or "{}")
             submissions.append(r)
 
         return {
@@ -1112,6 +1113,37 @@ async def get_dynamic_submissions(test_id: str, request: Request):
             "rubric": test_row["rubric"] or "",
             "submissions": submissions,
         }
+    finally:
+        db.close()
+
+
+class ScoreOverridesRequest(BaseModel):
+    score_overrides: dict
+
+
+@router.patch("/{test_id}/submissions/{sub_id}/scores")
+async def update_score_overrides(test_id: str, sub_id: int, body: ScoreOverridesRequest, request: Request):
+    """Save per-section score overrides for a submission. score_overrides is {block_num: int|null}."""
+    user_id = _require_auth(request)
+    db = get_db()
+    try:
+        owner = db.execute(
+            "SELECT teacher_user_id FROM tests WHERE id = ?", (test_id,)
+        ).fetchone()
+        if not owner or owner["teacher_user_id"] != user_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        sub = db.execute(
+            "SELECT id FROM test_submissions WHERE id = ? AND test_id = ?", (sub_id, test_id)
+        ).fetchone()
+        if not sub:
+            raise HTTPException(status_code=404, detail="Submission not found")
+        clean = {str(k): v for k, v in body.score_overrides.items() if v is not None and v != ""}
+        db.execute(
+            "UPDATE test_submissions SET score_overrides = ? WHERE id = ?",
+            (json.dumps(clean), sub_id)
+        )
+        db.commit()
+        return {"ok": True, "score_overrides": clean}
     finally:
         db.close()
 

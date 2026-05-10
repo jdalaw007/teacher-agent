@@ -261,6 +261,7 @@ def init_db():
         )""",
         "ALTER TABLE tests ADD COLUMN rubric TEXT DEFAULT ''",
         "ALTER TABLE test_submissions ADD COLUMN ai_grades TEXT DEFAULT '{}'",
+        "ALTER TABLE test_submissions ADD COLUMN score_overrides TEXT DEFAULT '{}'",
     ]:
         try:
             conn.execute(migration)
