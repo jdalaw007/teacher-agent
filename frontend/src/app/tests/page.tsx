@@ -166,7 +166,12 @@ export default function TestsPage() {
         throw new Error(err.detail || r.statusText);
       }
       const data = await r.json();
-      setMdMsg(`"${data.title}" created. Test ID: ${data.test_id}`);
+      const base = `"${data.title}" created. Test ID: ${data.test_id}`;
+      if (data.learned_notes) {
+        setMdMsg(`${base}\n\nAI learned from your edits and updated its style notes:\n\n${data.learned_notes}`);
+      } else {
+        setMdMsg(base);
+      }
       setMarkdown(""); setMdTitle(""); setOriginalMarkdown("");
       loadTests();
     } catch (e: unknown) {
@@ -349,7 +354,7 @@ const s: Record<string, React.CSSProperties> = {
   optional: { color: "#888", fontWeight: "normal" },
   fileInput: { fontSize: 13, padding: "6px 0" },
   errMsg: { color: "#c00", fontSize: 13, marginBottom: 10 },
-  okMsg: { color: "#1a7a30", fontSize: 13, marginBottom: 10 },
+  okMsg: { color: "#1a7a30", fontSize: 13, marginBottom: 10, whiteSpace: "pre-wrap" as const },
   inlineLink: { background: "none", border: "none", color: "#0066cc", cursor: "pointer", fontSize: 13, textDecoration: "underline", padding: 0 },
   btn: { background: "#0066cc", color: "white", border: "none", padding: "10px 28px", borderRadius: 6, cursor: "pointer", fontWeight: "bold", fontSize: 14 },
   btnDisabled: { background: "#999", color: "white", border: "none", padding: "10px 28px", borderRadius: 6, cursor: "not-allowed", fontWeight: "bold", fontSize: 14 },

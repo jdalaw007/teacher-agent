@@ -12,6 +12,7 @@ from app.services.test_markdown import markdown_to_test_data, test_data_to_markd
 from app.services.test_to_markdown import extract_to_markdown
 from app.services.test_validator import fix_and_revalidate
 from app.services.profile import get_ai_client
+from app.services.extraction_learner import learn_from_edit
 
 router = APIRouter()
 
@@ -703,7 +704,16 @@ async def create_test_from_markdown(body: FromMarkdownRequest, request: Request)
     finally:
         db.close()
 
-    return {"test_id": test_id, "title": title, "url": f"/test/{test_id}"}
+    learned_notes: Optional[str] = None
+    if original_md and original_md != body.markdown.strip():
+        learned_notes = learn_from_edit(user_id, original_md, body.markdown)
+
+    return {
+        "test_id": test_id,
+        "title": title,
+        "url": f"/test/{test_id}",
+        "learned_notes": learned_notes,
+    }
 
 
 @router.get("/list")

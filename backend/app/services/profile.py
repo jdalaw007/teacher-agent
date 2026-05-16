@@ -84,6 +84,19 @@ class ProfileService:
         finally:
             db.close()
 
+    def set_extraction_notes(self, notes: str) -> None:
+        """Overwrite the user's extraction style notes without touching other fields."""
+        db = get_db()
+        try:
+            db.execute(
+                "UPDATE user_profiles SET extraction_notes = ?, updated_at = datetime('now') "
+                "WHERE user_id = ?",
+                (notes or "", self.user_id),
+            )
+            db.commit()
+        finally:
+            db.close()
+
     def get_ai_provider(self) -> str:
         """Return the user's preferred AI provider ('openai' or 'gemini')."""
         db = get_db()
