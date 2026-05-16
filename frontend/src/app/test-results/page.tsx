@@ -75,7 +75,7 @@ export default function TestResultsPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const token = localStorage.getItem("google_token") || localStorage.getItem("access_token") || "";
+    const token = localStorage.getItem("token") || "";
     if (!token) { setError("Not logged in."); setLoading(false); return; }
     fetch(`${API_URL}/test/unit7/submissions`, {
       headers: { Authorization: `Bearer ${token}` },
