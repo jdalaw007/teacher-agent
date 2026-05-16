@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import Optional
 from app.services.agent import AgentService
@@ -10,6 +10,27 @@ import hashlib
 import json
 import re
 from pathlib import Path
+
+
+def _extract_file_text(file_bytes: bytes, filename: str) -> str:
+    """Extract plain text from a PDF/docx/txt for use as AI context."""
+    fname = (filename or "").lower()
+    if fname.endswith(".txt"):
+        return file_bytes.decode("utf-8", errors="replace")
+    if fname.endswith((".doc", ".docx")):
+        from app.services.test_parser import extract_text
+        return extract_text(file_bytes, filename)
+    if fname.endswith(".pdf"):
+        try:
+            import fitz  # pymupdf
+        except ImportError as e:
+            raise ValueError(f"PDF support unavailable: {e}")
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        try:
+            return "\n\n".join(page.get_text() for page in doc)
+        finally:
+            doc.close()
+    raise ValueError(f"Unsupported file type: {filename}. Use .pdf, .docx, or .txt")
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data" / "corpus"
 
@@ -138,6 +159,79 @@ async def generate_assignment(request: Request, body: GenerateAssignmentRequest)
             content=result["assignment"],
         )
         result["saved_filename"] = saved_title
+
+    return result
+
+
+@router.post("/generate-with-file")
+@limiter.limit("20/minute")
+async def generate_assignment_with_file(
+    request: Request,
+    file: UploadFile = File(...),
+    body: str = Form(...),
+):
+    """Generate an assignment using an uploaded reference file as primary source.
+    `body` is a JSON-encoded GenerateAssignmentRequest (same shape as /generate).
+    The file is extracted to plain text and prepended to the AI prompt as the
+    primary reference; corpus docs / search results still apply as secondary
+    context.
+    """
+    try:
+        body_data = json.loads(body)
+        parsed = GenerateAssignmentRequest(**body_data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid body JSON: {e}")
+
+    file_bytes = await file.read()
+    try:
+        reference_content = _extract_file_text(file_bytes, file.filename or "")
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Could not read file: {e}")
+
+    if not reference_content.strip():
+        raise HTTPException(status_code=422, detail="Uploaded file has no extractable text")
+
+    # If no topic was provided, use the filename as a fallback so the assignment has a label
+    if not parsed.topic.strip():
+        parsed.topic = (file.filename or "Uploaded assignment").rsplit(".", 1)[0].replace("_", " ")
+
+    user_id = get_user_id_from_request(request)
+    agent = AgentService(user_id, parsed.class_id)
+
+    student_context = None
+    student_service = StudentService(user_id)
+    if parsed.group_id:
+        members = student_service.get_group_members(parsed.group_id)
+        if members:
+            member_ids = [m["id"] for m in members]
+            student_context = student_service.get_students_for_prompt(parsed.class_id, member_ids, group_id=parsed.group_id)
+    elif parsed.student_ids:
+        student_context = student_service.get_students_for_prompt(parsed.class_id, parsed.student_ids)
+
+    result = agent.generate_assignment(
+        topic=parsed.topic,
+        grade_level=parsed.grade_level,
+        assignment_type=parsed.assignment_type,
+        additional_instructions=parsed.additional_instructions,
+        selected_doc_ids=parsed.selected_doc_ids,
+        student_context=student_context,
+        reference_content=reference_content,
+        reference_filename=file.filename,
+    )
+
+    if result.get("error"):
+        raise HTTPException(status_code=503, detail=result["error"])
+
+    if result.get("assignment"):
+        saved_title = _auto_save_assignment(
+            user_id=user_id,
+            class_id=parsed.class_id,
+            class_name=parsed.class_name or parsed.class_id,
+            topic=parsed.topic,
+            content=result["assignment"],
+        )
+        result["saved_filename"] = saved_title
+        result["used_file"] = file.filename
 
     return result
 

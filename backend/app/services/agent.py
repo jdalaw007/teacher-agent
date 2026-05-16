@@ -79,9 +79,14 @@ class AgentService:
         assignment_type: str = "worksheet",
         additional_instructions: str = None,
         selected_doc_ids: list[str] = None,
-        student_context: str = None
+        student_context: str = None,
+        reference_content: str = None,
+        reference_filename: str = None,
     ) -> dict:
-        """Generate an assignment based on corpus materials."""
+        """Generate an assignment based on corpus materials.
+        reference_content: optional raw text from a one-off uploaded file. Used as the
+        primary source material for the assignment when present.
+        """
 
         if not self.client:
             return {
@@ -101,6 +106,15 @@ class AgentService:
             context = "Here are relevant materials from the teacher's corpus:\n\n"
             for i, doc in enumerate(relevant_docs, 1):
                 context += f"--- Document {i} ---\n{doc['content']}\n\n"
+
+        # Uploaded file content takes priority — use it as the primary source
+        if reference_content and reference_content.strip():
+            label = reference_filename or "uploaded file"
+            context = (
+                f"PRIMARY REFERENCE (from {label}) — base the assignment on this content:\n\n"
+                f"{reference_content.strip()[:12000]}\n\n"
+                + (("ALSO available — corpus context:\n\n" + context) if context else "")
+            )
 
         # Build student context block
         student_block = ""

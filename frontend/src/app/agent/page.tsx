@@ -60,6 +60,7 @@ export default function AgentPage() {
 
   // Generate form state
   const [topic, setTopic] = useState('')
+  const [referenceFile, setReferenceFile] = useState<File | null>(null)
   const [gradeLevel, setGradeLevel] = useState('')
   const [assignmentType, setAssignmentType] = useState('worksheet')
   const [additionalInstructions, setAdditionalInstructions] = useState('')
@@ -716,7 +717,9 @@ export default function AgentPage() {
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!topic || !selectedClassId) return
+    // Allow generation when EITHER a topic OR an uploaded reference file is provided
+    if (!selectedClassId) return
+    if (!topic && !referenceFile) return
 
     setLoading(true)
     setMessage(null)
@@ -741,24 +744,39 @@ export default function AgentPage() {
     setTimeout(() => setLoadingProgress(40), 2000)
 
     try {
-      const res = await fetch(`${API_URL}/agent/generate`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          topic,
-          class_id: selectedClassId,
-          class_name: courses.find(c => c.id === selectedClassId)?.name || selectedClassId,
-          grade_level: gradeLevel || null,
-          assignment_type: assignmentType,
-          additional_instructions: additionalInstructions || null,
-          selected_doc_ids: selectedDocIds.size > 0 ? Array.from(selectedDocIds) : null,
-          student_ids: personalizationMode === 'individual' && selectedStudentIds.size > 0 ? Array.from(selectedStudentIds) : null,
-          group_id: personalizationMode === 'group' ? selectedGroupId : null,
+      const bodyParams = {
+        topic,
+        class_id: selectedClassId,
+        class_name: courses.find(c => c.id === selectedClassId)?.name || selectedClassId,
+        grade_level: gradeLevel || null,
+        assignment_type: assignmentType,
+        additional_instructions: additionalInstructions || null,
+        selected_doc_ids: selectedDocIds.size > 0 ? Array.from(selectedDocIds) : null,
+        student_ids: personalizationMode === 'individual' && selectedStudentIds.size > 0 ? Array.from(selectedStudentIds) : null,
+        group_id: personalizationMode === 'group' ? selectedGroupId : null,
+      }
+
+      let res: Response
+      if (referenceFile) {
+        // Multipart endpoint when a reference file is attached
+        const formData = new FormData()
+        formData.append('file', referenceFile)
+        formData.append('body', JSON.stringify(bodyParams))
+        res = await fetch(`${API_URL}/agent/generate-with-file`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
         })
-      })
+      } else {
+        res = await fetch(`${API_URL}/agent/generate`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(bodyParams),
+        })
+      }
 
       clearInterval(progressInterval)
       setLoadingProgress(100)
@@ -1022,12 +1040,35 @@ export default function AgentPage() {
                 <form onSubmit={handleGenerate} style={styles.form}>
                 <input
                   type="text"
-                  placeholder={t('topicPlaceholder')}
+                  placeholder={referenceFile ? 'Topic (optional — file describes the assignment)' : t('topicPlaceholder')}
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
                   style={styles.input}
-                  required
                 />
+
+                {/* Reference file uploader — AI uses this as primary source */}
+                <div style={{ background: '#faf8ff', border: '1px solid #d8c8f0', borderRadius: 6, padding: '10px 14px' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 500, color: '#444', display: 'block', marginBottom: 6 }}>
+                    Reference file <span style={{ color: '#888', fontWeight: 'normal' }}>(optional — upload an existing assignment, reading, or worksheet)</span>
+                  </label>
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.txt"
+                    onChange={(e) => setReferenceFile(e.target.files?.[0] || null)}
+                    style={{ fontSize: '0.85rem' }}
+                  />
+                  {referenceFile && (
+                    <div style={{ marginTop: 6, fontSize: '0.82rem', color: '#1a7a30' }}>
+                      &#10003; <strong>{referenceFile.name}</strong> attached.
+                      Topic field is optional — the AI will use this file as the primary source.
+                      <button
+                        type="button"
+                        onClick={() => setReferenceFile(null)}
+                        style={{ marginLeft: 10, background: 'none', border: '1px solid #ccc', padding: '2px 8px', borderRadius: 4, cursor: 'pointer', fontSize: '0.75rem', color: '#666' }}
+                      >Remove</button>
+                    </div>
+                  )}
+                </div>
                 <input
                   type="text"
                   placeholder={t('gradeLevelPlaceholder')}
